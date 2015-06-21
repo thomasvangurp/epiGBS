@@ -17,3 +17,5 @@ samtools
 vcfutils.pl
 pyfaidx
 rename_fast.py
+pigz
+bwa-mem
