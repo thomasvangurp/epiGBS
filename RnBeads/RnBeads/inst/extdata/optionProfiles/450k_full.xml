@@ -1,0 +1,9 @@
+<rnb.xml>
+	<filtering.greedycut>true</filtering.greedycut>
+	<disk.dump.big.matrices>true</disk.dump.big.matrices>
+	<enforce.memory.management>true</enforce.memory.management>
+	<gz.large.files>true</gz.large.files>
+	<distribution.subsample>1000000</distribution.subsample>
+	<differential.enrichment>true</differential.enrichment>
+	<exploratory.clustering.heatmaps.pdf>true</exploratory.clustering.heatmaps.pdf>
+</rnb.xml>

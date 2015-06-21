@@ -1,0 +1,19 @@
+Package: BSgenome.%(species)s%(genus)s.NIOO.v%(version)s
+Title: Consensus genome of %(species) s%(genus)s (NIOO version v%(version)s)
+Description: Consensus genome of %(species)s %(genus)s obtained by epiGBS
+Version: %(version)s.0
+Author: Bjorn Wouters, Developer and Thomas van Gurp, Developer
+Maintainer: Bjorn Wouters <B.wouters@nioo.knaw.nl>
+License: GPL (>= 2)
+organism: %(species)s %(genus)s
+species: %(species)s
+provider: NIOO
+provider_version: %(species)s%(version)s
+release_date: Dec. 2014
+release_name: Genome forged genome of %(species)s %(genus)s
+source_url: %(templ_dir)s
+SrcDataFiles: %(twobit_name)s from %(twobit_dir)s
+seqs_srcdir: %(twobit_dir)s
+seqfile_name: %(twobit_name)s
+organism_biocview: %(species)s_%(genus)s
+BSgenomeObjname: %(species)s
