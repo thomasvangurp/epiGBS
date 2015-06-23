@@ -9,7 +9,6 @@ Additionally, the correct barcode is appended at the start  to the read.
 """
 
 import Levenshtein
-import nwalign as nw
 import re
 import sys
 import os
@@ -32,22 +31,22 @@ def parse_options():
     """Parses command line options"""
     parser = OptionParser()
     parser.add_option("--r1_in",  metavar = "reads1",  action = "store",
-                      type="string",  dest = "reads1", \
-                      , help = "left-hand fastq file")
-    parser.add_option("--r2_in",  metavar = "reads2",  action = "store",\
-                      ,  type="string",  dest = "reads2", 
+                      type="string",  dest = "reads1", help = "left-hand fastq file")
+    parser.add_option("--r2_in",  metavar = "reads2",  action = "store",
+                      type="string",  dest = "reads2",
                       help = "right-hand fastq file")
     parser.add_option("--mode",  metavar = "mode",  action = "store", type="string",  
                       dest = "mode", help = "pe or single end mode", \
                       default="pe")
     parser.add_option("-b", "--barcodes",  metavar = "input",  action = "store",
                       type="string",  dest = "barcode",\
+                      default="barcodes.csv", 
                       help = "input tab separated barcode file")
     parser.add_option("--bc-out ",  metavar = "bcout",  action = "store",
-                      type="string",  dest = "bcout",
-                      help = "barcode file out, usefull for galaxy")
+                      type="string",  dest = "bcout",default="stats.csv", 
+                      help = "barcode file out")
     parser.add_option("-o", "--output",  metavar = "output",  action = "store",
-                  type="string",  dest = "output", default = "/Volumes/data/", 
+                  type="string",  dest = "output", default = "output", 
                   help = "Specify output file, default is STDOUT")
     parser.add_option("--output-dir",  metavar = "outputdir",  action = "store",
                   type="string",  dest = "outputdir", default = "", 
@@ -91,7 +90,7 @@ def parse_options():
                       type="int",  default = 2,  dest = "mismatch", 
                       help = "Number of mismatches allowed")
     parser.add_option("-d",  "--delete",  action = "store_true", 
-                      default = 0 ,  dest = "delete", 
+                      default = 1 ,  dest = "delete",
                       help = "Remove the barcode from the sequence, default is TRUE")
     return parser
     
@@ -468,6 +467,30 @@ def put_output(dir_in, opts, Flowcell, Lane):
     shutil.move(os.path.join(dir_in, seq2_name), opts.match2)
     return 0
 
+
+def write_stats(bc_dict, opts):
+    """Write stats to output file"""
+    barcode_in = open(opts.barcode, 'r')
+    stat_out = open(opts.stat, "w")
+    bcout = open(opts.bcout, 'w')
+    #Write the first line = header to output barcode field.
+    bcout.write(barcode_in.readline())
+    for line in barcode_in.readlines():
+        fc = line.split('\t')[0]
+        ln = line.split('\t')[1]
+        if not (fc == Flowcell and ln == Lane):
+            continue
+        bcout.write(line)
+        name = line.split('\t')[4]
+        bc_left, bc_right = line.split('\t')[2:4]
+        try:
+            bc_count = bc_dict['%s_%s'%(bc_left, bc_right)+'_count']
+            stat_out.write("%s\t"*3%(name, '%s_%s'%(bc_left, bc_right), bc_count)+'\n')
+        except KeyError:
+             stat_out.write("%s\t"*3%(name, '%s_%s'%(bc_left, bc_right), 0)+'\n')
+    stat_out.close()
+    bcout.close()
+
 if __name__ == "__main__":
     parser = parse_options()
     opts, args = parser.parse_args()
@@ -478,7 +501,7 @@ if __name__ == "__main__":
     #Make sure we identify the  flowcell and lane records in the barcodefile that correspond to our fastq file
     Flowcell, Lane = get_details_flow(opts)
     bc_dict, bc_sorted = parse_bc(opts.barcode, Flowcell, Lane)
-    opts.output = tempfile.mkdtemp(prefix='seq', dir=opts.output)
+    opts.output = tempfile.mkdtemp(prefix='seq', dir=opts.outputdir)
     if  os.path.exists(opts.output):
         shutil.rmtree(opts.output)
         os.mkdir(opts.output)
@@ -493,31 +516,11 @@ if __name__ == "__main__":
             #TODO: determine error type
             pass
     if opts.mode == 'pe':
+        write_stats(bc_dict, opts)
         parse_seq_pe(opts, bc_dict, Flowcell, Lane)
     else:
         parse_seq(opts, bc_sorted, bc_dict, Flowcell, Lane)
-    barcode_in = open(opts.barcode, 'r')
-    stat_out = open(opts.stat, "w")
-    bcout = open(opts.bcout, 'w')
-    #Write the first line = header to output barcode field.
-    bcout.write(barcode_in.readline())
-    for line in barcode_in.readlines():
-        fc = line.split('\t')[0]
-        ln = line.split('\t')[1]
-        if not (fc == Flowcell and ln == Lane):
-            continue
-        bcout.write(line)
-        name = line.split('\t')[3]
-        bc = line.split('\t')[2]
-        if "_count" in bc or bc == 'Barcode':
-            continue
-        try:
-            bc_count = bc_dict[bc+'_count']
-            stat_out.write("%s\t"*3%(name, bc, bc_count)+'\n')
-        except KeyError:
-             stat_out.write("%s\t"*3%(name, bc, 0)+'\n')
-    stat_out.close()
-    bcout.close()
+    write_stats(bc_dict, opts)
     if opts.match1 != 'matching-R1':
         #match1 is the default variable name.
         put_output(opts.output, opts, Flowcell, Lane)
