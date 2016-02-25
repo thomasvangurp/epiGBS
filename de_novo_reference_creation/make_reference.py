@@ -12,6 +12,7 @@ import tempfile
 import os
 import tempfile
 import shutil
+from distutils.spawn import find_executable
 # usearch = "usearch"
 # seqtk = "seqtk"
 # pear = "/mnt/data/tools/pear_merge/default/pear"
@@ -20,6 +21,15 @@ import shutil
 # vcfutils = "~/epiGBS/vcfutils.pl"
 origWD = os.getcwd()
 os.chdir(origWD)
+
+
+dependencies = {}
+dependencies['samtools'] = '<0.1.18'
+dependencies['vcfutils.pl'] = ''
+dependencies['usearch'] = 'usearch_8.0.1409'
+dependencies['seqtk'] = '1.0-r31'
+dependencies['pear'] = 'v0.9.7'
+dependencies['pigz'] = ''
 
 usearch = "usearch_8.0.1409_i86osx32"
 seqtk = "/opt/bin/seqtk"
@@ -33,35 +43,36 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Process input files')
     #input files
     parser.add_argument('-s','--sequences',
-                        help='number of sequences to take for testing')
-    parser.add_argument('--watson_forward',
-                        help='watson forward fastq')
-    parser.add_argument('--watson_reverse',
-                    help='watson reverse fastq')
-    parser.add_argument('--crick_forward',
-                        help='crick forward fastq')
-    parser.add_argument('--crick_reverse',
-                    help='crick reverse fastq')
+                        help='number of sequences to take for testing, useful for debugging')
+    parser.add_argument('--forward',
+                        help='forward reads fastq')
+    parser.add_argument('--reverse',
+                    help='reverse reads fastq')
     parser.add_argument('--min_unique_size',default="2",
                     help='Minimum unique cluster size')
     parser.add_argument('--clustering_treshold',default="0.95",
                     help='Clustering treshold for final clustering step')
     parser.add_argument('-t','--tmpdir',
-                        help='tmp directory')
+                        help='tmp directory',default='/tmp')
     parser.add_argument('--threads',
                         help='Number of threads to used where multithreading is possible')
     parser.add_argument('--outputdir',
                         help='Optional: output directory')
     parser.add_argument('--log',
                         help='log of output operation')
-    parser.add_argument('--samout',
+    parser.add_argument('--samout',#TODO: describe what is the purpose of this file
                         help='sam output of clustering process')
-    parser.add_argument('--consensus',
+    parser.add_argument('--consensus',#TODO: describe what is the purpose of this file
                         help='consensus output')
-    parser.add_argument('--consensus_cluster',
+    parser.add_argument('--consensus_cluster',#TODO: describe what is the purpose of this file
                     help='consensus clustering output')
     args = parser.parse_args()
     if args.outputdir:
+        if not os.path.exists(args.outputdir):
+            try:
+                os.mkdir(args.outputdir)
+            except OSError:
+                raise
         args.log = os.path.join(args.outputdir,'make_reference.log')
         args.samout = os.path.join(args.outputdir,'clustering.bam')
         args.consensus = os.path.join(args.outputdir,'consensus.fa')
@@ -101,15 +112,21 @@ def merge_reads(args):
         else:
             head = ''
         if strand == 'watson':
-            cmd1 = ['zcat '+args.watson_forward +head+ ' >'+fwd_out.name]
-            cmd2 = ['zcat '+args.watson_reverse +head+ ' >'+rev_out.name]
+            grep_watson = "|grep Watson -A 3|sed '/^--$/d'"
+            cmd1 = ['gzcat '+args.forward + head + grep_watson + ' >'+fwd_out.name]
+            cmd2 = ['gzcat '+args.reverse + head + grep_watson + ' >'+rev_out.name]
         else:
-            cmd1 = ['zcat '+args.crick_forward +head+ ' >'+fwd_out.name]
-            cmd2 = ['zcat '+args.crick_reverse +head+ ' >'+rev_out.name]
-        log = "Write input files to tmpdir using zcat"
+            grep_crick = "|grep Crick -A 3|sed '/^--$/d'"
+            cmd1 = ['gzcat '+args.forward + head + grep_crick + ' >'+fwd_out.name]
+            cmd2 = ['gzcat '+args.reverse + head + grep_crick + ' >'+rev_out.name]
+        log = "Write input files to tmpdir using gzcat"
         run_subprocess(cmd1,args,log)
         run_subprocess(cmd2,args,log)
         #todo: check if pear is on path
+        pear = find_executable('pear')
+        if not pear:
+            raise EnvironmentError("Pear was not found, please make sure it exists on your path or install it from"+
+                        " \nhttp://www.exelixis-lab.org/web/software/pear")
         cmd = [pear]
         #set reads
         cmd+=['-f',fwd_out.name]
@@ -451,9 +468,9 @@ def get_consensus(in_files,args):
         watson_out = tempfile.NamedTemporaryFile(suffix=".fq",prefix='cns_watson',dir=args.tmpdir)
         consensus = tempfile.NamedTemporaryFile(suffix=".fq",prefix='consensus',dir=args.tmpdir)
         cons_sort = tempfile.NamedTemporaryFile(suffix=".fq",prefix='cons_sort',dir=args.tmpdir)
-        cmd1 = ['samtools mpileup -u %s | bcftools view -cg - | %s vcf2fq |%s seq -A - > %s'%
+        cmd1 = ['samtools_old mpileup -u %s | bcftools view -cg - | %s vcf2fq |%s seq -A - > %s'%
                 (in_files['sam_out']['crick_%s'%type],vcfutils,seqtk,crick_out.name)]
-        cmd2 = ['samtools mpileup -u %s | bcftools view -cg - | %s vcf2fq |%s seq -A -  > %s'%
+        cmd2 = ['samtools_old mpileup -u %s | bcftools view -cg - | %s vcf2fq |%s seq -A -  > %s'%
                (in_files['sam_out']['watson_%s'%type],vcfutils,seqtk,watson_out.name)]
         log = "get consensus crick %s"%type
         run_subprocess(cmd1,args,log)
