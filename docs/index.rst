@@ -34,4 +34,3 @@ References
 
 .. [vanGurp2016] epiGBS: reference-free reduced representation bisulfite sequencing. van Gurp, T. P., Wagemaker, N. C. A. M., Wouters, B. O. R., Vergeer, P., Ouborg, J. N. J., & Verhoeven, K. J. F.
         Nature Methods, 1–7. http://doi.org/10.1038/nmeth.3763
-	    `doi: doi.org/10.1038/nmeth.3763 <http://doi.org/10.1038/nmeth.3763>`_
