@@ -3,7 +3,7 @@ __author__ = 'thomasvangurp'
 # Date created: 20/11/2014 (europe date)
 # Function: Pipeline for creation of reference
 #Python version: 2.7.3
-#External dependencies: usearch,samtools,vcfutils.pl,rename_fast.py
+#External dependencies: vsearch,samtools,vcfutils.pl,rename_fast.py
 #Known bugs: None
 #Modifications: None
 import argparse
@@ -13,6 +13,8 @@ import os
 import tempfile
 import shutil
 from distutils.spawn import find_executable
+from Bio import SeqIO
+import gzip
 # usearch = "usearch"
 # seqtk = "seqtk"
 # pear = "/mnt/data/tools/pear_merge/default/pear"
@@ -32,6 +34,7 @@ dependencies['pear'] = 'v0.9.7'
 dependencies['pigz'] = ''
 
 usearch = "usearch_8.0.1409_i86osx32"
+vsearch = "vsearch"
 seqtk = "/opt/bin/seqtk"
 pear = "pear"
 mergeBSv3 = "mergeBSv3.py"
@@ -104,21 +107,21 @@ def merge_reads(args):
     "Unzip / Merge Watson and crick reads using pear"
     out_files = {}
     for strand in ['watson','crick']:
-        fwd_out = tempfile.NamedTemporaryFile(suffix=".fa",prefix=strand,dir=args.tmpdir)
-        rev_out = tempfile.NamedTemporaryFile(suffix=".fa",prefix=strand,dir=args.tmpdir)
+        fwd_out = tempfile.NamedTemporaryFile(suffix=".fa.gz",prefix=strand,dir=args.tmpdir)
+        rev_out = tempfile.NamedTemporaryFile(suffix=".fa.gz",prefix=strand,dir=args.tmpdir)
         join_out = tempfile.NamedTemporaryFile(prefix="join_%s"%strand,dir=args.tmpdir)
         if args.sequences:
             head = '|head -n %s'%(int(args.sequences)*4)
         else:
             head = ''
         if strand == 'watson':
-            grep_watson = "|grep Watson -A 3|sed '/^--$/d'"
-            cmd1 = ['gzcat '+args.forward + head + grep_watson + ' >'+fwd_out.name]
-            cmd2 = ['gzcat '+args.reverse + head + grep_watson + ' >'+rev_out.name]
+            grep_watson = "|grep Watson -A 3 |sed '/^--$/d'"
+            cmd1 = ['gzcat '+args.forward + head + grep_watson + '|pigz -c >'+fwd_out.name]
+            cmd2 = ['gzcat '+args.reverse + head + grep_watson + '|pigz -c >'+rev_out.name]
         else:
-            grep_crick = "|grep Crick -A 3|sed '/^--$/d'"
-            cmd1 = ['gzcat '+args.forward + head + grep_crick + ' >'+fwd_out.name]
-            cmd2 = ['gzcat '+args.reverse + head + grep_crick + ' >'+rev_out.name]
+            grep_crick = "|grep Crick -A 3 |sed '/^--$/d'"
+            cmd1 = ['gzcat '+args.forward + head + grep_crick + '|pigz -c  >'+fwd_out.name]
+            cmd2 = ['gzcat '+args.reverse + head + grep_crick + '|pigz -c  >'+rev_out.name]
         log = "Write input files to tmpdir using gzcat"
         run_subprocess(cmd1,args,log)
         run_subprocess(cmd2,args,log)
@@ -158,44 +161,61 @@ def remove_methylation(in_files,args):
         for key,value in in_files[strand].items():
             name_out = key + "_demethylated"
             file_out = value.split('.')[0]+ "_demethylated." + '.'.join(value.split('.')[1:])
+            file_out += '.gz'
             if strand == 'watson':
                 #sed only replaces values in lines that only contain valid nucleotides
-                cmd = ["sed '/^[A,C,G,T,N]*$/s/C/T/g' "+value + ">"+file_out]
+                cmd = ["sed '/^[A,C,G,T,N]*$/s/C/T/g' "+value + "| pigz -c >"+file_out]
             else:
                 #sed only replaces values in lines that only contain valid nucleotides
-                cmd = ["sed '/^[A,C,G,T,N]*$/s/G/A/g' "+value + ">"+file_out]
+                cmd = ["sed '/^[A,C,G,T,N]*$/s/G/A/g' "+value + "| pigz -c >"+file_out]
             log = "use sed to remove methylation variation in %s_%s"%(strand,key)
             run_subprocess(cmd,args,log)
             in_files[strand][name_out] = file_out
     return in_files
 
+def join_fastq(r1,r2,outfile):
+    """join fastq files with 'NNNN' between forward and reverse complemented reverse read"""
+    if r1.endswith('gz'):
+        f1_handle = SeqIO.parse(gzip.open(r1),'fastq')
+        f2_handle = SeqIO.parse(gzip.open(r2),'fastq')
+    else:
+        f1_handle = SeqIO.parse(gzip.open(r1),'fastq')
+        f2_handle = SeqIO.parse(gzip.open(r2),'fastq')
+    if outfile.endswith('gz'):
+        out_handle = gzip.open(outfile,'w')
+    else:
+        out_handle = open(outfile,'w')
+    for s1,s2 in zip(f1_handle,f2_handle):
+        out = '>%s\n%s'%(s1.description,str(s1.seq))
+        #add N nucleotides to read s1
+        out += 'N'*8
+        #add reverse complement of read 2 to read 1
+        #TODO: check if output file is correct in terms of strandedness
+        out += str(s2.seq.reverse_complement())
+        out += '\n'
+        out_handle.write(out)
+    out_handle.close()
+    return True
+
 def join_non_overlapping(in_files,args):
-    """join non overlapping PE reads using usearch"""
+    """join non overlapping PE reads"""
     for strand in ['watson','crick']:
-        # rev_comp_out = in_files[strand]['single_R2_demethylated'] + 'revcomp'
-        # cmd = [seqtk+' seq -r %s > %s'%
-        #        (in_files[strand]['single_R2_demethylated'],rev_comp_out)]
-        # p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True)
-        # exit_code = p.wait()
-        # if exit_code:
-        #     raise Exception(p.stderr.read())
-        # in_files[strand]['single_R2_demethylated'] = rev_comp_out
-        #todo: Trim end of R1 read length for demultiplexing? Different bc lengths
+        #TODO: Trim end of R1 read length for demultiplexing? Different bc lengths
         out_file = in_files[strand]['single_R1_demethylated'].replace('unassembled.forward.fastq','joined.fa')
+        join_fastq(in_files[strand]['single_R1_demethylated'],in_files[strand]['single_R2_demethylated'],out_file)
+        #store output files in dictionary
         out_name = 'demethylated_joined'
         in_files[strand][out_name] = out_file
-        cmd = [usearch + " -fastq_join %s -reverse %s -fastaout %s"%
-        (in_files[strand]['single_R1_demethylated'],
-         in_files[strand]['single_R2_demethylated'],out_file)]
-        log = "join R1 and R2 with NNN between for %s"%strand
-        run_subprocess(cmd,args,log)
     return in_files
+
+
 
 def trim_and_zip(in_files,args):
     """Trim fastq files and return using pigz"""
     in_files['trimmed'] = {}
     #Process single files
-    log = 'Process single watson reads: Trim first 4 bases of R1'
+    #TODO: determine number of nucleotide trimmed from reads dependent on restriction enzyme being used.
+    log = 'Process single watson reads: Trim first %s bases of R1'%'3'
     file_in = in_files['watson']['single_R1']
     if args.outputdir:
         file_out = os.path.join(args.outputdir, 'Unassembled.R1.watson_trimmed.fq.gz')
@@ -263,90 +283,15 @@ def trim_and_zip(in_files,args):
 
 
 def dereplicate_reads(in_files,args):
-    """dereplicate reads using usearch"""
+    """dereplicate reads using vsearch"""
     for strand in ['watson','crick']:
-        #TODO: test putting merged_demethylated in this 10.000.000 lines routine.
-        for name in ["demethylated_joined"]:
-            #split per 10.000.000 lines and process.
+        for name in ["demethylated_joined","merged_demethylated"]:
             file_in = in_files[strand][name]
+            file_out = '.'.join(file_in.split('.')[:-2]) + '.derep.' + file_in.split('.')[-2]
             in_files[strand][name] = [file_in]
-            name_out = name + "_derep"
-            final_out = file_in.replace('.fa','.derep.fa')
-            in_files[strand][name_out] = final_out
-            log = "remove existing __splitout__ output files"
-            cmd = ["rm %s/__splitout__*"%(args.tmpdir)]
+            cmd = [vsearch+' -derep_fulllength %s -sizeout -minuniquesize 2 -output %s'%(file_in,file_out)]
+            log = "Dereplicate full_length of %s using vsearch"%(strand)
             run_subprocess(cmd,args,log)
-            log = "Splitting file in 10 million lines pieces to allow for processing"
-            cmd = ["split -l 10000000 %s %s/__splitout__"%(file_in,args.tmpdir)]
-            run_subprocess(cmd,args,log)
-            #get files that were produced in list
-            files = os.listdir(args.tmpdir)
-            for f in files:
-                if not f.startswith('__splitout__'):
-                    continue
-                file_in = os.path.join(args.tmpdir,f)
-                name_out = f + "_derep"
-                file_out = f+'.derep.fa'
-                cmd = [usearch+' -derep_fulllength %s -sizeout -minuniquesize 2 -fastaout %s'%(file_in,file_out)]
-                log = "Dereplicate full_length of %s_%s"%(strand,f)
-                run_subprocess(cmd,args,log)
-                log = "Concatenate multiple output files"
-                cmd = ["cat %s >> %s"%(file_out,final_out)]
-                run_subprocess(cmd,args,log)
-
-        for name in ["merged_demethylated"]:
-            file_in = open(in_files[strand][name])
-            #TODO: sort merged file by insert size and split by this
-            dirpath = tempfile.mkdtemp(dir=args.tmpdir)
-            count = 0
-            read_dict = {}
-            first_line = file_in.readline()
-            file_in.seek(0)
-            if first_line.startswith('>'):
-                ftype = 'fasta'
-                n = 2
-            else:
-                ftype = 'fastq'
-                n = 4
-            while True:
-                count += 1
-                read_data = ''
-                for i in range(n):
-                    try:
-                        line = file_in.readline()
-                    except StopIteration:
-                        break
-                    read_data += line
-                    if i == 1:
-                        read_len = len(line)-1
-                if not line:
-                    break
-                try:
-                    read_dict[read_len]+= read_data
-                except KeyError:
-                    read_dict[read_len] = read_data
-                if not count%100000:
-                    print "%s\t sequences processed"%count
-                    #start writing reads to
-                    for k,v in read_dict.items():
-                        with open(os.path.join(dirpath,'%s'%k),'a') as fout:
-                            fout.write(v)
-                    read_dict = {}
-            for k,v in sorted(read_dict.items()):
-                with open(os.path.join(dirpath,'%s'%k),'a') as fout:
-                    fout.write(v)
-            #Now process the files one by one
-            for file in os.listdir(dirpath):
-                current_file = os.path.join(dirpath, file)
-                log = "Dereplicate full_length of %s_%s"%(strand,file)
-                cmd = [usearch+' -derep_fulllength %s -sizeout -minuniquesize 2 -fastaout %s.out.fa'%
-                       (current_file,current_file)]
-                run_subprocess(cmd,args,log)
-            log = "Combining dereplication file for %s"%(strand)
-            file_out = in_files[strand][name].replace('.fa','.derep.fa')
-            cmd = ["cat %s/*.fa > %s"%(dirpath,file_out)]
-            run_subprocess(cmd,args,log)
-            shutil.rmtree(dirpath)
             name_out = name + "_derep"
             in_files[strand][name_out] = file_out
     return in_files
@@ -381,21 +326,20 @@ def combine_and_convert(in_files,args):
     run_subprocess(cmd,args,log)
     in_files['combined']["joined_combined"] = out_normal
     in_files['combined']["joined_combined_CTGA"] = out_CTGA
-
     return in_files
 
 def make_uc(in_files,args):
-    """run usearch to create uc file"""
-    #run usearch to create uc file
+    """run vsearch to create uc file"""
+    #run vsearch to create uc file
     out_CTGA = in_files['combined']["merged_combined_CTGA"]
-    cmd = [usearch + ' -derep_fulllength %s -strand both -uc %s/derep_merged.uc'%
+    cmd = [vsearch + ' -derep_fulllength %s -strand both -uc %s/derep_merged.uc'%
     (out_CTGA,args.tmpdir)]
     log = "Make uc output for merged reads"
     run_subprocess(cmd,args,log)
     in_files['combined']["derep_merged"] = args.tmpdir+'/derep_merged.uc'
     #TODO: do the same processing on the joined files here.
     out_CTGA = in_files['combined']["joined_combined_CTGA"]
-    cmd = [usearch + ' -derep_fulllength %s -strand both -uc %s/derep_joined.uc'%
+    cmd = [vsearch + ' -derep_fulllength %s -strand both -uc %s/derep_joined.uc'%
     (out_CTGA,args.tmpdir)]
     log = "Make uc output for joined reads"
     run_subprocess(cmd,args,log)
@@ -468,6 +412,7 @@ def get_consensus(in_files,args):
         watson_out = tempfile.NamedTemporaryFile(suffix=".fq",prefix='cns_watson',dir=args.tmpdir)
         consensus = tempfile.NamedTemporaryFile(suffix=".fq",prefix='consensus',dir=args.tmpdir)
         cons_sort = tempfile.NamedTemporaryFile(suffix=".fq",prefix='cons_sort',dir=args.tmpdir)
+        #TODO: find way to make sure new samtools versions play well with this command trick..
         cmd1 = ['samtools_old mpileup -u %s | bcftools view -cg - | %s vcf2fq |%s seq -A - > %s'%
                 (in_files['sam_out']['crick_%s'%type],vcfutils,seqtk,crick_out.name)]
         cmd2 = ['samtools_old mpileup -u %s | bcftools view -cg - | %s vcf2fq |%s seq -A -  > %s'%
@@ -494,8 +439,8 @@ def get_consensus(in_files,args):
         cmd = ["cat %s |tee >(wc -l) >> %s"%(consensus.name,cons_out.name)]
         run_subprocess(cmd,args,log)
 
-    log = "sort combined consensus %s on length for usearch"%type
-    cmd = [usearch + " -sortbylength %s -fastaout %s"%(cons_out.name,args.consensus)]
+    log = "sort combined consensus %s on length for vsearch"%type
+    cmd = [vsearch + " -sortbylength %s --output %s"%(cons_out.name,args.consensus)]
     try:
         result = run_subprocess(cmd,args,log)
     except Exception:
@@ -511,7 +456,7 @@ def get_consensus(in_files,args):
 def cluster_consensus(in_files,args):
     "Cluster concensus with preset id"
     cluster_cons = args.consensus_cluster
-    cmd = [usearch+" -cluster_smallmem %s -id 0.95 -centroids %s -sizeout -strand both"%
+    cmd = [vsearch+" -cluster_smallmem %s -id 0.95 -centroids %s -sizeout -strand both"%
            (in_files['consensus']['consensus'],
            cluster_cons)]
     log = "Clustering consensus with 95% identity"
@@ -523,10 +468,18 @@ def cluster_consensus(in_files,args):
     run_subprocess(cmd,args,log)
     return in_files
 
+def check_dependencies():
+    """check for presence of dependencies and if not present say where they can be installed"""
+
+    return 0
 
 
 def main():
     "Main function loop"
+    #Check if os is windows, if so, throw error and tell the user that the software cannot run on windows.
+    if os.name == 'nt':
+        raise OSError("This pipeline relies on unix/linux with a bash shell.")
+    check_dependencies()
     args = parse_args()
     #Make sure log is empty at start
     if os.path.isfile(args.log):
@@ -535,7 +488,7 @@ def main():
     files = merge_reads(args)
     #Step 2: Remove methylation variation from both watson and crick using sed
     files = remove_methylation(files,args)
-    #Step 3: join the non overlapping PE reads from watson and crick using usearch
+    #Step 3: join the non overlapping PE reads from watson and crick using vsearch
     files = join_non_overlapping(files,args)
     #Step 3a use seqtk to trim merged and joined reads from enzyme recognition site
     files = trim_and_zip(files,args)
