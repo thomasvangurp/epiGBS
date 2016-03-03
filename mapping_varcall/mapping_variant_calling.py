@@ -94,9 +94,9 @@ def run_subprocess(cmd,args,log_message):
         origWD =getScriptPath()
         p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
                              shell=True,executable='/bin/bash')#,cwd=origWD)
-        exit_code = p.wait()
-        stdout = p.stdout.read().replace('\r','\n')
-        stderr = p.stderr.read().replace('\r','\n')
+        stdout, stderr = p.communicate()
+        stdout = stdout.replace('\r','\n')
+        stderr = stderr.replace('\r','\n')
         if stdout:
             log.write('stdout:\n%s\n'%stdout)
         if stderr:
