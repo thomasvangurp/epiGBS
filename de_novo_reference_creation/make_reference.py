@@ -91,24 +91,21 @@ def run_subprocess(cmd,args,log_message):
         log.write("now starting:\t%s\n"%log_message)
         log.write('running:\t%s\n'%(' '.join(cmd)))
         p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True,executable='/bin/bash')
-        exit_code = p.wait()
-        stdout = p.stdout.read().replace('\r','\n')
-        stderr = p.stderr.read().replace('\r','\n')
+        stdout, stderr = p.communicate()
+        stdout = stdout.replace('\r','\n')
+        stderr = stderr.replace('\r','\n')
         if stdout:
             log.write('stdout:\n%s\n'%stdout)
         if stderr:
             log.write('stderr:\n%s\n'%stderr)
         log.write('finished:\t%s\n\n'%log_message)
-    if exit_code:
-        return Exception("Call of %s failed with \n %s"%(cmd,stderr))
-    else:
-        return 0
+    return 0
 def merge_reads(args):
     "Unzip / Merge Watson and crick reads using pear"
     out_files = {}
     for strand in ['watson','crick']:
-        fwd_out = tempfile.NamedTemporaryFile(suffix=".fa.gz",prefix=strand,dir=args.tmpdir)
-        rev_out = tempfile.NamedTemporaryFile(suffix=".fa.gz",prefix=strand,dir=args.tmpdir)
+        fwd_out = tempfile.NamedTemporaryFile(suffix=".fastq.gz",prefix=strand,dir=args.tmpdir)
+        rev_out = tempfile.NamedTemporaryFile(suffix=".fastq.gz",prefix=strand,dir=args.tmpdir)
         join_out = tempfile.NamedTemporaryFile(prefix="join_%s"%strand,dir=args.tmpdir)
         if args.sequences:
             head = '|head -n %s'%(int(args.sequences)*4)
@@ -173,25 +170,39 @@ def remove_methylation(in_files,args):
             in_files[strand][name_out] = file_out
     return in_files
 
+def reverse_complement(read):
+    """fast reverse complement"""
+    nts = {'A':'T','C':'G','G':'C','T':'A','N':'N'}
+    output = [nts[nt] for nt in read[::-1]]
+    return ''.join(output)
+
 def join_fastq(r1,r2,outfile):
     """join fastq files with 'NNNN' between forward and reverse complemented reverse read"""
     if r1.endswith('gz'):
-        f1_handle = SeqIO.parse(gzip.open(r1),'fastq')
-        f2_handle = SeqIO.parse(gzip.open(r2),'fastq')
+        f1_handle = gzip.open(r1)
+        f2_handle = gzip.open(r2)
     else:
-        f1_handle = SeqIO.parse(gzip.open(r1),'fastq')
-        f2_handle = SeqIO.parse(gzip.open(r2),'fastq')
+        f1_handle = open(r1)
+        f2_handle = open(r2)
     if outfile.endswith('gz'):
         out_handle = gzip.open(outfile,'w')
     else:
         out_handle = open(outfile,'w')
-    for s1,s2 in zip(f1_handle,f2_handle):
-        out = '>%s\n%s'%(s1.description,str(s1.seq))
+    while True:
+        read1 = []
+        read2 = []
+        try:
+            for i in range(4):
+                read1.append(f1_handle.next())
+                read2.append(f2_handle.next())
+        except StopIteration:
+            break
+        out = '>%s\n%s'%(read1[0][1:-1],read1[1][:-1])
         #add N nucleotides to read s1
         out += 'N'*8
         #add reverse complement of read 2 to read 1
         #TODO: check if output file is correct in terms of strandedness
-        out += str(s2.seq.reverse_complement())
+        out += reverse_complement(read2[1][:-1])
         out += '\n'
         out_handle.write(out)
     out_handle.close()
