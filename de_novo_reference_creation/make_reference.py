@@ -10,7 +10,6 @@ import argparse
 import subprocess
 import tempfile
 import os
-import tempfile
 import shutil
 from distutils.spawn import find_executable
 from Bio import SeqIO
@@ -202,7 +201,7 @@ def join_fastq(r1,r2,outfile):
         out += 'N'*8
         #add reverse complement of read 2 to read 1
         #TODO: check if output file is correct in terms of strandedness
-        out += reverse_complement(read2[1][:-1])
+        out += read2[1][:-1]
         out += '\n'
         out_handle.write(out)
     out_handle.close()
@@ -343,73 +342,81 @@ def make_uc(in_files,args):
     """run vsearch to create uc file"""
     #run vsearch to create uc file
     out_CTGA = in_files['combined']["merged_combined_CTGA"]
-    cmd = [vsearch + ' -derep_fulllength %s -strand both -uc %s/derep_merged.uc'%
-    (out_CTGA,args.tmpdir)]
+    merged_uc = tempfile.NamedTemporaryFile(suffix=".uc",prefix='derep_merged',dir=args.tmpdir,delete=False)
+    joined_uc = tempfile.NamedTemporaryFile(suffix=".uc",prefix='derep_joined',dir=args.tmpdir,delete=False)
+    cmd = [vsearch + ' -derep_fulllength %s -strand both -uc %s'%
+    (out_CTGA,merged_uc.name)]
     log = "Make uc output for merged reads"
     run_subprocess(cmd,args,log)
-    in_files['combined']["derep_merged"] = args.tmpdir+'/derep_merged.uc'
+    in_files['combined']["derep_merged"] = merged_uc.name
     #TODO: do the same processing on the joined files here.
     out_CTGA = in_files['combined']["joined_combined_CTGA"]
-    cmd = [vsearch + ' -derep_fulllength %s -strand both -uc %s/derep_joined.uc'%
-    (out_CTGA,args.tmpdir)]
+    cmd = [vsearch + ' -derep_fulllength %s -strand both -uc %s'%
+    (out_CTGA,joined_uc.name)]
     log = "Make uc output for joined reads"
     run_subprocess(cmd,args,log)
-    in_files['combined']["derep_joined"] = args.tmpdir+'/derep_joined.uc'
+    in_files['combined']["derep_joined"] = joined_uc.name
     return in_files
 
 def make_sam(in_files,args):
     """Run mergeBSv3.py to make a sam file of clusters"""
+    merged_sam = tempfile.NamedTemporaryFile(suffix=".sam",prefix='merged',dir=args.tmpdir)
+    joined_sam = tempfile.NamedTemporaryFile(suffix=".sam",prefix='joined',dir=args.tmpdir)
     cmd1 = ['%s -s %s -c %s --clusters %s --samout %s'%
            (mergeBSv3,
             in_files['combined']['merged_combined'],
            in_files['crick']['merged_demethylated_derep'],
            in_files['combined']['derep_merged'],
-           args.tmpdir+'/merged.sam')]
+           merged_sam.name)]
     cmd2 = ['%s -s %s -c %s --clusters %s --samout %s'%
            (mergeBSv3,
             in_files['combined']['joined_combined'],
            in_files['crick']['demethylated_joined_derep'],
            in_files['combined']['derep_joined'],
-           args.tmpdir+'/joined.sam')]
+           joined_sam.name)]
     log = "Make sam output for merged reads"
     run_subprocess(cmd1,args,log)
     log = "Make uc output for joined reads"
     run_subprocess(cmd2,args,log)
     in_files['sam_out'] = {}
-    in_files['sam_out']['merged'] = args.tmpdir+'/merged.sam'
-    in_files['sam_out']['joined'] = args.tmpdir+'/joined.sam'
+    in_files['sam_out']['merged'] = merged_sam.name
+    in_files['sam_out']['joined'] = joined_sam.name
     log = "create sorted and indexed bam for next step"
     cmd1 = ["samtools view -Shb %s|samtools sort - %s;samtools index %s"%
-           (args.tmpdir+'/merged.sam',args.tmpdir+'/merged',args.tmpdir+'/merged.bam')]
+           (merged_sam.name,merged_sam.name.replace('.sam',''),merged_sam.name.replace('.sam','.bam'))]
     cmd2 = ["samtools view -Shb %s|samtools sort - %s;samtools index %s"%
-           (args.tmpdir+'/joined.sam',args.tmpdir+'/joined',args.tmpdir+'/joined.bam')]
+           (joined_sam.name,joined_sam.name.replace('.sam',''),joined_sam.name.replace('.sam','.bam'))]
     run_subprocess(cmd1,args,log)
     run_subprocess(cmd2,args,log)
-    in_files['sam_out']['merged'] = args.tmpdir+'/merged.bam'
-    in_files['sam_out']['joined'] = args.tmpdir+'/joined.bam'
+    in_files['sam_out']['merged'] = merged_sam.name.replace('.sam','.bam')
+    in_files['sam_out']['joined'] = joined_sam.name.replace('.sam','.bam')
     return in_files
 
 def split_output(in_files,args):
     """Split output in indexed Watson and crick  bam files"""
     #Create bam file for watson and crick sam for both sam files
+    watson_merged = tempfile.NamedTemporaryFile(suffix=".bam",prefix='watson_merged',dir=args.tmpdir,delete=False)
+    crick_merged = tempfile.NamedTemporaryFile(suffix=".bam",prefix='crick_merged',dir=args.tmpdir,delete=False)
+    watson_joined = tempfile.NamedTemporaryFile(suffix=".bam",prefix='watson_joined',dir=args.tmpdir,delete=False)
+    crick_joined = tempfile.NamedTemporaryFile(suffix=".bam",prefix='crick_joined',dir=args.tmpdir,delete=False)
     cmd1 = ["samtools view -h %s | tee >(grep '^@\|watson' |"%(in_files['sam_out']['merged'])+
-            "samtools view -Shb - |samtools sort -o - /%s/sort_watson > /%s/watson_merged.bam) |"%
-            (args.tmpdir,args.tmpdir)+
-            "grep '^@\|crick' |samtools view -Shb - |samtools sort -o - /%s/sort_crick >/%s/crick_merged.bam"%
-            (args.tmpdir,args.tmpdir)]
+            "samtools view -Shb - |samtools sort -o - %s > %s )|"%
+            (watson_merged.name.replace('.bam',''),watson_merged.name)+
+            "grep '^@\|crick' |samtools view -Shb - |samtools sort -o - %s > %s"%
+            (crick_merged.name.replace('.bam',''),crick_merged.name)]
     cmd2 = ["samtools view -h %s | tee >(grep '^@\|watson' |"%(in_files['sam_out']['joined'])+
-            "samtools view -Shb - |samtools sort -o - /%s/sort_watson > /%s/watson_joined.bam) |"%
-            (args.tmpdir,args.tmpdir)+
-            "grep '^@\|crick' |samtools view -Shb - |samtools sort -o - /%s/sort_crick >/%s/crick_joined.bam"%
-            (args.tmpdir,args.tmpdir)]
+            "samtools view -Shb - |samtools sort -o - %s > %s )|"%
+            (watson_joined.name.replace('.bam',''),watson_joined.name)+
+            "grep '^@\|crick' |samtools view -Shb - |samtools sort -o - %s > %s"%
+            (crick_joined.name.replace('.bam',''),crick_joined.name)]
     log = "make watson sorted and indexed bam"
     run_subprocess(cmd1,args,log)
     log = "make crick sorted and indexed bam"
     run_subprocess(cmd2,args,log)
-    in_files['sam_out']['watson_joined'] = args.tmpdir+'/watson_joined.bam'
-    in_files['sam_out']['crick_joined'] = args.tmpdir+'/crick_joined.bam'
-    in_files['sam_out']['watson_merged'] = args.tmpdir+'/watson_merged.bam'
-    in_files['sam_out']['crick_merged'] = args.tmpdir+'/crick_merged.bam'
+    in_files['sam_out']['watson_joined'] = watson_joined.name
+    in_files['sam_out']['crick_joined'] = crick_joined.name
+    in_files['sam_out']['watson_merged'] = watson_merged.name
+    in_files['sam_out']['crick_merged'] = crick_merged.name
     return in_files
 
 def get_consensus(in_files,args):
