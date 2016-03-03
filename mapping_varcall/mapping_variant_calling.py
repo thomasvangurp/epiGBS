@@ -102,10 +102,7 @@ def run_subprocess(cmd,args,log_message):
         if stderr:
             log.write('stderr:\n%s\n'%stderr)
         log.write('finished:\t%s\n\n'%log_message)
-    if exit_code:
-        return Exception("Call of %s failed with \n %s"%(cmd,stderr))
-    else:
-        return 0
+    return 0
 
 def make_header(in_files,args):
     """Make sam header given input file species and"""
@@ -139,7 +136,7 @@ def run_bwameth(in_files,args):
         add = '|head -n %s'%(4*int(args.sequences))
     else:
         add = ''
-    cmd = ['bwameth.py -t %s -p %s --reference %s <(zcat %s %s) NA'%
+    cmd = ['bwameth.py -t %s -p %s --reference %s <(gunzip -c %s %s) NA'%
            (args.threads,
             os.path.join(args.tmpdir,'merged'),
             ref,
@@ -148,7 +145,7 @@ def run_bwameth(in_files,args):
     run_subprocess(cmd,args,log)
 
     log = "run bwameth for non-merged reads"
-    cmd = ['bwameth.py -t %s -p %s --reference %s <(zcat %s %s) <(zcat %s %s)'%
+    cmd = ['bwameth.py -t %s -p %s --reference %s <(gunzip -c %s %s) <(gunzip -c %s %s)'%
            (args.threads,
             os.path.join(args.tmpdir,'pe'),
             ref,
