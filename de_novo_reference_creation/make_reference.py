@@ -89,16 +89,23 @@ def run_subprocess(cmd,args,log_message):
     with open(args.log,'a') as log:
         log.write("now starting:\t%s\n"%log_message)
         log.write('running:\t%s\n'%(' '.join(cmd)))
+        log.flush()
         p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True,executable='/bin/bash')
-        stdout, stderr = p.communicate()
-        stdout = stdout.replace('\r','\n')
-        stderr = stderr.replace('\r','\n')
-        if stdout:
-            log.write('stdout:\n%s\n'%stdout)
+        while True:
+            nextline = p.stdout.readline().replace('\r','\n')
+            if nextline == '' and p.poll() != None:
+                break
+            log.write(nextline)
+            log.flush()
+        return_code = p.poll()
+        stderr = p.stderr.read().replace('\r','\n')
+        if return_code:
+            raise RuntimeError(stderr)
         if stderr:
             log.write('stderr:\n%s\n'%stderr)
         log.write('finished:\t%s\n\n'%log_message)
     return 0
+
 def merge_reads(args):
     "Unzip / Merge Watson and crick reads using pear"
     out_files = {}
@@ -232,7 +239,7 @@ def trim_and_zip(in_files,args):
     else:
         file_out = '_'.join(args.watson_forward.split('_')[:-1])+'.unassembled.watson.R1.trimmed.fq.gz'
     in_files['trimmed']['watson_R1'] = file_out
-    cmd = [seqtk + ' trimfq -b 4 %s |pigz -c >> %s'%(file_in,file_out)]
+    cmd = [seqtk + ' trimfq -b 4 %s |pigz -c > %s'%(file_in,file_out)]
     run_subprocess(cmd,args,log)
 
     log = 'Process single watson reads: reverse complement but no trimming required for R2 '
@@ -243,7 +250,7 @@ def trim_and_zip(in_files,args):
         file_out = '_'.join(args.watson_reverse.split('_')[:-1])+'.unassembled.watson.R2.fq.gz'
     in_files['trimmed']['watson_R2'] = file_out
     #Take reverse complement as pear outputs R2 in reverse complement
-    cmd = [seqtk + ' seq %s |%s seq -r - |pigz -c >> %s'%(file_in,seqtk,file_out)]
+    cmd = [seqtk + ' seq %s |%s seq -r - |pigz -c > %s'%(file_in,seqtk,file_out)]
     run_subprocess(cmd,args,log)
 
     log = 'Process single crick reads: no trimming required for R1'
@@ -275,7 +282,7 @@ def trim_and_zip(in_files,args):
     else:
         file_out = '_'.join(args.watson_forward.split('_')[:-1])+'.assembled.watson.trimmedR1.fq.gz'
     in_files['trimmed']['watson_merged'] = file_out
-    cmd = [seqtk + ' trimfq -b 4 %s |pigz -c >> %s'%(file_in,file_out)]
+    cmd = [seqtk + ' trimfq -b 4 %s |pigz -c > %s'%(file_in,file_out)]
     run_subprocess(cmd,args,log)
 
     log = 'Process merged crick reads: Trim first 4 bases of R2'
