@@ -12,7 +12,8 @@ import tempfile
 import os
 import shutil
 import sys
-
+import pysam
+from Bio import SeqIO
 
 
 def getScriptPath():
@@ -91,9 +92,8 @@ def run_subprocess(cmd,args,log_message):
     with open(args.log,'a') as log:
         log.write("now starting:\t%s\n"%log_message)
         log.write('running:\t%s\n'%(' '.join(cmd)))
-        origWD =getScriptPath()
-        p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
-                             shell=True,executable='/bin/bash')#,cwd=origWD)
+        log.flush()
+        p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True,executable='/bin/bash')
         stdout, stderr = p.communicate()
         stdout = stdout.replace('\r','\n')
         stderr = stderr.replace('\r','\n')
@@ -101,6 +101,9 @@ def run_subprocess(cmd,args,log_message):
             log.write('stdout:\n%s\n'%stdout)
         if stderr:
             log.write('stderr:\n%s\n'%stderr)
+        return_code = p.poll()
+        if return_code:
+            raise RuntimeError(stderr)
         log.write('finished:\t%s\n\n'%log_message)
     return 0
 
@@ -117,7 +120,7 @@ def run_bwameth(in_files,args):
     in_files['bam_out'] = {}
     in_files['bam_out']['watson'] = os.path.join(args.output_dir,'watson.bam')
     in_files['bam_out']['crick'] = os.path.join(args.output_dir,'crick.bam')
-    in_files['header'] = os.path.join(args.tmpdir,'header.sam')
+    in_files['header'] = os.path.join(args.output_dir,'header.sam')
     #TEMP COMMANDS!
     # log = "get header"
     # cmd = ["samtools view -H %s > %s"%
@@ -138,7 +141,7 @@ def run_bwameth(in_files,args):
         add = ''
     cmd = ['bwameth.py -t %s -p %s --reference %s <(gunzip -c %s %s) NA'%
            (args.threads,
-            os.path.join(args.tmpdir,'merged'),
+            os.path.join(args.output_dir,'merged'),
             ref,
             args.merged,add
             )]
@@ -147,37 +150,40 @@ def run_bwameth(in_files,args):
     log = "run bwameth for non-merged reads"
     cmd = ['bwameth.py -t %s -p %s --reference %s <(gunzip -c %s %s) <(gunzip -c %s %s)'%
            (args.threads,
-            os.path.join(args.tmpdir,'pe'),
+            os.path.join(args.output_dir,'pe'),
             ref,
             args.reads_R1,add,
             args.reads_R2,add
             )]
     run_subprocess(cmd,args,log)
 
-    log = "merge bam files"
-    cmd = ["samtools merge -f %s %s %s"%
-           ((os.path.join(args.tmpdir,'combined.bam')),
-           (os.path.join(args.tmpdir,'merged.bam')),
-           (os.path.join(args.tmpdir,'pe.bam')))]
-    run_subprocess(cmd,args,log)
-
     log = "get header"
     cmd = ["samtools view -H %s > %s"%
-           ((os.path.join(args.tmpdir,'combined.bam')),
-            (os.path.join(args.tmpdir,'header.sam')))]
+           ((os.path.join(args.output_dir,'pe.bam')),
+            (os.path.join(args.output_dir,'header.sam')))]
     run_subprocess(cmd,args,log)
 
 
     log = "Append RG to header"
     in_files = addRG(in_files,args)
 
-    log = "reheader & split in watson and crick"
-    cmd = ["samtools reheader %s %s |samtools view -h - |tee "%
-           (in_files['header'],
-            (os.path.join(args.tmpdir,'combined.bam')),)+
-           ">( grep '^@\|YD:Z:f'|sed 's/YC:Z:GA //;s/YC:Z:CT    //'|samtools view -Shb - > %s)"%
+    log = "merge bam files"
+    cmd = ["samtools merge -fc %s %s %s"%
+           ((os.path.join(args.output_dir,'combined.bam')),
+           "<(samtools reheader %s %s)"%(in_files['header'],os.path.join(args.output_dir,'merged.bam')),
+           "<(samtools reheader %s %s)"%(in_files['header'],os.path.join(args.output_dir,'pe.bam')))]
+    run_subprocess(cmd,args,log)
+
+
+
+
+
+    log = "split in watson and crick bam file"
+    cmd = ["samtools view -h %s |tee "%
+           (os.path.join(args.output_dir,'combined.bam'))+
+           ">( grep '^@\|ST:Z:Watson' | samtools view -Shb - > %s)"%
            (os.path.join(args.output_dir,'watson.bam'))+
-           "| grep '^@\|YD:Z:r'|sed 's/YC:Z:GA //;s/YC:Z:CT    //'|samtools view -Shb - > %s"%
+           "| grep '^@\|ST:Z:Crick' | samtools view -Shb - > %s"%
            (os.path.join(args.output_dir,'crick.bam'))]
 
     run_subprocess(cmd,args,log)
@@ -243,16 +249,83 @@ def addRG(in_files,args):
     return in_files
 
 
+def remove_PCR_duplicates(in_files,args):
+    """Remove PCR duplicates and non-paired PE-reads per cluster"""
+    for strand,bamfile in in_files['bam_out'].items():
+        clusters = SeqIO.parse(open(args.reference),'fasta')
+        handle = pysam.AlignmentFile(bamfile,'rb')
+        dup_count = 0
+        read_count = 0
+        out_bam = tempfile.NamedTemporaryFile(suffix='uniq.bam',dir=args.output_dir,delete=False)
+        out_handle = pysam.AlignmentFile(out_bam.name,'wb', template=handle)
+        for cluster in clusters:
+            reads = handle.fetch(cluster.id)
+            if 'NNNNNNNN' in cluster._seq.upper():
+                paired = True
+            else:
+                paired = False
+            read_out = {}
+            tags ={}
+            for read in reads:
+                tag = read.tags[-3][1]
+                sample = read.tags[-1][1]
+                AS = read.tags[1][1]
+                #Get read ID and ID of potential pair
+                if not read.is_proper_pair and paired:
+                    continue
+                read_id = '%s_%s'%(read.qname,read.is_read1)
+                pair_id = '%s_%s'%(read.qname,read.is_read2)
+                if sample not in tags:
+                    tags[sample] = {}
+                    read_out[sample] = {}
+                if tag not in tags[sample]:
+                    try:
+                        #Store pair id for sample and locus specific tag
+                        tags[sample][tag].append(pair_id)
+                        read_out[sample][tag][AS] = read
+                    except KeyError:
+                        tags[sample][tag] = [pair_id]
+                        read_out[sample][tag] = {AS:read}
+                    #TODO: retain highest quality read instead of first read encountered
+                    #TODO: get consensus of PCR duplicates?
+                    # out_handle.write(read)
+                    read_count += 1
+                else:
+                    if read_id in [read2_name for read2_name in tags[sample][tag]]:
+                        #PE read with same name, write to output
+                        out_handle.write(read)
+                        read_count += 1
+                    else:
+                        dup_count += 1
+        try:
+            print '%s strand has %s reads %s duplicates which is %.1f%%'%(strand,
+            read_count +dup_count,dup_count,(100*float(dup_count)/(read_count+dup_count)))
+        except ZeroDivisionError:
+            pass
+        out_bam.flush()
+        out_bam.close()
+        old_bam = in_files['bam_out'][strand]
+        log = "move old bam file %s to %s"%(old_bam,old_bam.replace('.bam','.old.bam'))
+        cmd = ["mv %s %s"%(old_bam,old_bam.replace('.bam','.old.bam'))]
+        run_subprocess(cmd,args,log)
+        log = "move uniq bam file %s to %s"%(out_bam.name,old_bam)
+        cmd = ["mv %s %s"%(out_bam.name,in_files['bam_out'][strand])]
+        run_subprocess(cmd,args,log)
+        log = "index bam file %s"%(old_bam)
+        cmd = ["samtools index %s"%(in_files['bam_out'][strand])]
+        run_subprocess(cmd,args,log)
+    return in_files
+
 
 def run_Freebayes(in_files,args):
     "run freebayes on watson and crick bam file with threadpool"
     in_files['variants'] = {}
+    log = open(args.log,'a')
     for strand in ['watson','crick']:
         processes = set()
         max_processes = int(args.threads)
         outdir = tempfile.mkdtemp(prefix='vcf', dir=args.tmpdir)
         outlist = []
-        bamfile = in_files['bam_out'][strand]
         in_files['variants'][strand] = outdir
         with open(in_files['header']) as header:
             for line in header:
@@ -268,8 +341,13 @@ def run_Freebayes(in_files,args):
                 if int(length) <500:
                     p = subprocess.Popen(cmd,stdout=subprocess.PIPE,
                                                stderr=subprocess.PIPE,shell=True,executable='/bin/bash')
+                    stdout, stderr = p.communicate()
+                    return_code = p.poll()
+                    stderr = stderr.replace('\r','\n')
+                    if return_code:
+                        raise RuntimeError(stderr)
                     try:
-                        out = p.stdout.read().split('\t')
+                        out = stdout.split('\t')
                         depth = int(out[3])
                     except IndexError:
                         #no reads for this contig, skip
@@ -301,6 +379,8 @@ def run_Freebayes(in_files,args):
                 else:
                     cmd += " -r %s:0-%s --bam %s > %s"%\
                     (contig, int(length)-1,bamfile, os.path.join(outdir,'%s.vcf'%contig))
+                log.write('starting freebayes on contig %s'%contig)
+                log.flush()
                 processes.add(subprocess.Popen(cmd,stdout=subprocess.PIPE,
                                                stderr=subprocess.PIPE,shell=True,executable='/bin/bash'))
                 while len(processes) >= max_processes:
@@ -313,22 +393,23 @@ def run_Freebayes(in_files,args):
             processes.difference_update([
                         p for p in processes if p.poll() is not None])
         if strand == 'watson':
-            print outdir,outlist[0],args.watson_vcf
-            shutil.move(os.path.join(outdir,outlist[0]),args.watson_vcf)
-            for vcf_file in outlist:
-                file_in = os.path.join(outdir,vcf_file)
-                cmd = ['cat %s |grep -v "^#" >> %s'%(file_in,args.watson_vcf)]
-                p = subprocess.Popen(cmd,stdout=subprocess.PIPE,
-                                           stderr=subprocess.PIPE,shell=True,executable='/bin/bash')
-                exit_code = p.wait()
+            target = args.watson_vcf
         else:
-            shutil.move(os.path.join(outdir,outlist[0]),args.crick_vcf)
-            for vcf_file in outlist:
-                file_in = os.path.join(outdir,vcf_file)
-                cmd = ['cat %s |grep -v "^#" >> %s'%(file_in,args.crick_vcf)]
-                p = subprocess.Popen(cmd,stdout=subprocess.PIPE,
-                                           stderr=subprocess.PIPE,shell=True,executable='/bin/bash')
-                exit_code = p.wait()
+            target = args.crick_vcf
+        print outdir,outlist[0],target
+        shutil.move(os.path.join(outdir,outlist[0]),target)
+        for vcf_file in outlist:
+            file_in = os.path.join(outdir,vcf_file)
+            cmd = ['cat %s |grep -v "^#" >> %s'%(file_in,target)]
+            p = subprocess.Popen(cmd,stdout=subprocess.PIPE,
+                                       stderr=subprocess.PIPE,shell=True,executable='/bin/bash')
+            stdout, stderr = p.communicate()
+            return_code = p.poll()
+            stdout = stdout.replace('\r','\n')
+            stderr = stderr.replace('\r','\n')
+            if return_code:
+                raise RuntimeError(stderr)
+        return in_files
 
 
 
@@ -351,6 +432,17 @@ def methylation_calling(in_files,args):
 def main():
     "Main function loop"
     args = parse_args()
+    test = 1
+    if test:
+        in_files = {}
+        in_files['bam_out'] = {'watson':
+       '/Users/thomasvangurp/epiGBS/Zwitserland/pilot_60/seq5U7ms_/Pru_vul/output_mapping/watson.bam',
+       'crick':'/Users/thomasvangurp/epiGBS/Zwitserland/pilot_60/seq5U7ms_/Pru_vul/output_mapping/crick.bam'}
+        remove_PCR_duplicates(in_files,args)
+        in_files['header'] = '/Users/thomasvangurp/epiGBS/Zwitserland/pilot_60/seq5U7ms_/Pru_vul/output_mapping/header.sam'
+        files = run_Freebayes(in_files,args)
+        files = methylation_calling(files,args)
+        sys.exit(0)
     #Make sure log is empty at start
     if os.path.isfile(args.log):
         os.remove(args.log)
@@ -359,8 +451,9 @@ def main():
     #Step 2: map reads using bwameth
     files = run_bwameth(files,args)
     #Step 3: join the non overlapping PE reads from watson and crick using usearch
-    files = addRG(files,args)
+    files = remove_PCR_duplicates(files,args)
     #Step 3a use seqtk to trim merged and joined reads from enzyme recognition site
+
     files = run_Freebayes(files,args)
     #Step 4: Dereplicate all watson and crick reads
     files = methylation_calling(files,args)
