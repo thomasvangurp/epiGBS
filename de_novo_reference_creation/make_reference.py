@@ -91,18 +91,16 @@ def run_subprocess(cmd,args,log_message):
         log.write('running:\t%s\n'%(' '.join(cmd)))
         log.flush()
         p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True,executable='/bin/bash')
-        while True:
-            nextline = p.stdout.readline().replace('\r','\n')
-            if nextline == '' and p.poll() != None:
-                break
-            log.write(nextline)
-            log.flush()
-        return_code = p.poll()
-        stderr = p.stderr.read().replace('\r','\n')
-        if return_code:
-            raise RuntimeError(stderr)
+        stdout, stderr = p.communicate()
+        stdout = stdout.replace('\r','\n')
+        stderr = stderr.replace('\r','\n')
+        if stdout:
+            log.write('stdout:\n%s\n'%stdout)
         if stderr:
             log.write('stderr:\n%s\n'%stderr)
+        return_code = p.poll()
+        if return_code:
+            raise RuntimeError(stderr)
         log.write('finished:\t%s\n\n'%log_message)
     return 0
 

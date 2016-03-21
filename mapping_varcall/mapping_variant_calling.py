@@ -254,52 +254,51 @@ def remove_PCR_duplicates(in_files,args):
     for strand,bamfile in in_files['bam_out'].items():
         clusters = SeqIO.parse(open(args.reference),'fasta')
         handle = pysam.AlignmentFile(bamfile,'rb')
-        dup_count = 0
-        read_count = 0
         out_bam = tempfile.NamedTemporaryFile(suffix='uniq.bam',dir=args.output_dir,delete=False)
         out_handle = pysam.AlignmentFile(out_bam.name,'wb', template=handle)
+        dup_count = 0
+        read_count = 0
         for cluster in clusters:
             reads = handle.fetch(cluster.id)
             if 'NNNNNNNN' in cluster._seq.upper():
-                paired = True
+                cluster_is_paired = True
             else:
-                paired = False
+                cluster_is_paired = False
             read_out = {}
-            tags ={}
             for read in reads:
                 tag = read.tags[-3][1]
                 sample = read.tags[-1][1]
                 AS = read.tags[1][1]
-                #Get read ID and ID of potential pair
-                if not read.is_proper_pair and paired:
+                if not read.is_proper_pair and cluster_is_paired:
                     continue
-                read_id = '%s_%s'%(read.qname,read.is_read1)
-                pair_id = '%s_%s'%(read.qname,read.is_read2)
-                if sample not in tags:
-                    tags[sample] = {}
+                if sample not in read_out:
                     read_out[sample] = {}
-                if tag not in tags[sample]:
-                    try:
-                        #Store pair id for sample and locus specific tag
-                        tags[sample][tag].append(pair_id)
-                        read_out[sample][tag][AS] = read
-                    except KeyError:
-                        tags[sample][tag] = [pair_id]
-                        read_out[sample][tag] = {AS:read}
-                    #TODO: retain highest quality read instead of first read encountered
-                    #TODO: get consensus of PCR duplicates?
-                    # out_handle.write(read)
-                    read_count += 1
+                if tag not in read_out[sample]:
+                    read_out[sample][tag] = {read.qname:AS}
                 else:
-                    if read_id in [read2_name for read2_name in tags[sample][tag]]:
-                        #PE read with same name, write to output
-                        out_handle.write(read)
-                        read_count += 1
-                    else:
-                        dup_count += 1
+                    try:
+                        read_out[sample][tag][read.qname]+= AS
+                    except KeyError:
+                        read_out[sample][tag][read.qname] = AS
+            #process read_out
+            reads = handle.fetch(cluster.id)
+            for read in reads:
+                if not read.is_proper_pair and cluster_is_paired:
+                    continue
+                read_count += 1
+                if not read_count%100000:
+                    print '%s reads processed for %s strand'%(read_count,strand)
+                tag = read.tags[-3][1]
+                sample = read.tags[-1][1]
+                max_AS = max(read_out[sample][tag].values())
+                qname = [name for name,AS in read_out[sample][tag].items() if AS == max_AS][0]
+                if read.qname == qname:
+                    out_handle.write(read)
+                else:
+                    dup_count += 1
         try:
             print '%s strand has %s reads %s duplicates which is %.1f%%'%(strand,
-            read_count +dup_count,dup_count,(100*float(dup_count)/(read_count+dup_count)))
+            read_count ,dup_count,(100*float(dup_count)/(read_count)))
         except ZeroDivisionError:
             pass
         out_bam.flush()
@@ -327,6 +326,8 @@ def run_Freebayes(in_files,args):
         outdir = tempfile.mkdtemp(prefix='vcf', dir=args.tmpdir)
         outlist = []
         in_files['variants'][strand] = outdir
+        n = 0
+        skipped = 0
         with open(in_files['header']) as header:
             for line in header:
                 if line.startswith('@SQ'):
@@ -336,8 +337,13 @@ def run_Freebayes(in_files,args):
                     continue
                 #determine coverage on contig in bam file
                 #set depth at 100.000.000
+                n+=1
+                if not n%1000:
+                    print 'Done processing %s contigs on %s,skipped %s'%(n,strand,skipped)
                 bamfile = in_files['bam_out'][strand]
                 cmd = ['samtools mpileup -d 10000000 %s -r %s:10-10'%(bamfile,contig)]
+                # if int(contig) > 1000:
+                #     break
                 if int(length) <500:
                     p = subprocess.Popen(cmd,stdout=subprocess.PIPE,
                                                stderr=subprocess.PIPE,shell=True,executable='/bin/bash')
@@ -349,12 +355,16 @@ def run_Freebayes(in_files,args):
                     try:
                         out = stdout.split('\t')
                         depth = int(out[3])
+                        n_samples = int(stderr.split(' ')[1])
                     except IndexError:
                         #no reads for this contig, skip
                         continue
                 else:
                     # it does not make sense to calculate depth here!
                     depth = 0
+                if depth < n_samples * 10:
+                    skipped += 1
+                    continue
                 outlist.append('%s.vcf'%contig)
                 #freebayes --bam  <(samtools view -hs 0.89552238806 /tmp/watson.bam 1|samtools view -Shb -)
                 # --fasta-reference /Volumes/data/epiGBS/Baseclear/unfiltered_sequences/seqNNAtlE/Carrot/consensus.clustered.renamed.fa
@@ -379,8 +389,6 @@ def run_Freebayes(in_files,args):
                 else:
                     cmd += " -r %s:0-%s --bam %s > %s"%\
                     (contig, int(length)-1,bamfile, os.path.join(outdir,'%s.vcf'%contig))
-                log.write('starting freebayes on contig %s'%contig)
-                log.flush()
                 processes.add(subprocess.Popen(cmd,stdout=subprocess.PIPE,
                                                stderr=subprocess.PIPE,shell=True,executable='/bin/bash'))
                 while len(processes) >= max_processes:
@@ -398,27 +406,23 @@ def run_Freebayes(in_files,args):
             target = args.crick_vcf
         print outdir,outlist[0],target
         shutil.move(os.path.join(outdir,outlist[0]),target)
-        for vcf_file in outlist:
+        for vcf_file in outlist[1:]:
             file_in = os.path.join(outdir,vcf_file)
-            cmd = ['cat %s |grep -v "^#" >> %s'%(file_in,target)]
+            cmd = ['grep -v "^#" %s >> %s'%(file_in,target)]
             p = subprocess.Popen(cmd,stdout=subprocess.PIPE,
                                        stderr=subprocess.PIPE,shell=True,executable='/bin/bash')
             stdout, stderr = p.communicate()
-            return_code = p.poll()
-            stdout = stdout.replace('\r','\n')
-            stderr = stderr.replace('\r','\n')
-            if return_code:
-                raise RuntimeError(stderr)
-        return in_files
+    return in_files
 
 
 
 def methylation_calling(in_files,args):
     "run methylation calling script."
     log = ["Run methylation calling script"]
-    cmd = ["""
-    python methylation_calling.py\
-    -r      %(reference)s\
+    meth_calling = "/Users/thomasvangurp/Dropbox/Deenabio/Projects/nioo/methylation_calling.py"
+    cmd = [
+    "python %s"%meth_calling
+    +""" -r      %(reference)s\
     -w      %(watson_vcf)s\
     -c      %(crick_vcf)s\
     -m      %(methylation_vcf)s\
@@ -436,12 +440,12 @@ def main():
     if test:
         in_files = {}
         in_files['bam_out'] = {'watson':
-       '/Users/thomasvangurp/epiGBS/Zwitserland/pilot_60/seq5U7ms_/Pru_vul/output_mapping/watson.bam',
-       'crick':'/Users/thomasvangurp/epiGBS/Zwitserland/pilot_60/seq5U7ms_/Pru_vul/output_mapping/crick.bam'}
-        remove_PCR_duplicates(in_files,args)
-        in_files['header'] = '/Users/thomasvangurp/epiGBS/Zwitserland/pilot_60/seq5U7ms_/Pru_vul/output_mapping/header.sam'
+       '/Users/thomasvangurp/epiGBS/Zwitserland/pilot_60/seq5U7ms_/Gal_mol/output_mapping/watson.bam',
+       'crick':'/Users/thomasvangurp/epiGBS/Zwitserland/pilot_60/seq5U7ms_/Gal_mol/output_mapping/crick.bam'}
+        # remove_PCR_duplicates(in_files,args)
+        in_files['header'] = '/Users/thomasvangurp/epiGBS/Zwitserland/pilot_60/seq5U7ms_/Gal_mol/output_mapping/header.sam'
         files = run_Freebayes(in_files,args)
-        files = methylation_calling(files,args)
+        # files = methylation_calling(files,args)
         sys.exit(0)
     #Make sure log is empty at start
     if os.path.isfile(args.log):
@@ -451,12 +455,13 @@ def main():
     #Step 2: map reads using bwameth
     files = run_bwameth(files,args)
     #Step 3: join the non overlapping PE reads from watson and crick using usearch
+    #TODO: PCR duplicate removal should work for reference genomes as well!
     files = remove_PCR_duplicates(files,args)
     #Step 3a use seqtk to trim merged and joined reads from enzyme recognition site
-
-    files = run_Freebayes(files,args)
+    #TODO: implement faster variant calling with samtools mpileup
+    # files = run_Freebayes(files,args)
     #Step 4: Dereplicate all watson and crick reads
-    files = methylation_calling(files,args)
-    print 'boe'
+    # files = methylation_calling(files,args)
+    print 'done'
 if __name__ == '__main__':
     main()

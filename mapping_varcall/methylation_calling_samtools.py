@@ -122,8 +122,7 @@ def make_empty_sample(sample):
     """
     return vcf.model._Call(sample.site,
                            sample.sample,
-                           (None, None, None, None,
-                            None, None, None))
+                           tuple([None]*len(sample.site.FORMAT.split(':'))))
 
 
 def make_sample(sample, genotype):
@@ -146,53 +145,39 @@ def combine_record_samples(sample1, sample2):
     #TODO: are generated when multiple calls exist.
     if not sample1.called:
         depth = sample2.data.DP
-        phred_quality_ref = sample2.data.QR
-        phred_quality_alt = sample2.data.QA
         ref_observations = sample2.data.RO
         alt_observations = sample2.data.AO
     elif not sample2.called:
         depth = sample1.data.DP
-        phred_quality_ref = sample1.data.QR
-        phred_quality_alt = sample1.data.QA
         ref_observations = sample1.data.RO
         alt_observations = sample1.data.AO
     else:
         #Crude way of merging calldata from 2 records into new record..
         depth = sample1.data.DP + sample2.data.DP
-        phred_quality_ref = sample1.data.QR + sample2.data.QR
         ref_observations = sample1.data.RO + sample2.data.RO
         try:
             if sample1.site.ALT.__len__() + sample2.site.ALT.__len__()<=2:
-                phred_quality_alt = sample1.data.QA + sample2.data.QA
                 alt_observations = sample1.data.AO + sample2.data.AO
             elif len(sample1.site.ALT) == 1 and len(sample2.site.ALT) > 1:
                 try:
                     i = sample2.site.ALT.index(sample1.site.ALT[0])
                     alt_observations = sample1.data.AO + sample2.data.AO[i]
-                    phred_quality_alt = sample1.data.QA + sample2.data.QA[i]
                 except ValueError:
                     alt_observations = sample1.data.AO
-                    phred_quality_alt = sample1.data.QA
             elif len(sample2.site.ALT) == 1 and len(sample1.site.ALT) > 1:
                 try:
                     i = sample1.site.ALT.index(sample2.site.ALT[0])
                     alt_observations = sample2.data.AO + sample1.data.AO[i]
-                    phred_quality_alt = sample2.data.QA + sample1.data.QA[i]
                 except ValueError:
                     alt_observations = sample2.data.AO
-                    phred_quality_alt = sample2.data.QA
             else:
-                phred_quality_alt = []
                 alt_observations = []
                 for i,base in enumerate(sample1.site.ALT):
 
-                    pq_alt = sample1.data.QA[i]
                     alt_obs = sample1.data.AO[i]
                     if base in sample2.site.ALT:
                         i2 = sample2.site.ALT.index(base)
-                        pq_alt += sample2.data.QA[i2]
                         alt_obs += sample2.data.AO[i2]
-                    phred_quality_alt.append(pq_alt)
                     alt_observations.append(alt_obs)
 
         except TypeError:
@@ -200,8 +185,8 @@ def combine_record_samples(sample1, sample2):
     header = sample1.site.FORMAT
     header_list = header.split(':')
     call_data = vcf.model.make_calldata_tuple(header_list)
-    values = [sample1.data[0], depth, ref_observations, phred_quality_ref,
-                             alt_observations, phred_quality_alt, sample1.data.GL]
+    values = [sample1.data[0], depth, ref_observations,
+                             alt_observations]
     if len(sample1.site.ALT) > len(sample2.site.ALT):
         model = vcf.model._Call(sample1.site,
                             sample1.sample,
@@ -550,10 +535,48 @@ class CallBase(object):
     def check_change_samtools_call(self,sample):
         """Check variant calling in samtools provided sample"""
         empty_sample = make_empty_sample(sample)
-        header = ['GT','DP','AO','RO']
-        call_data = vcf.model.make_calldata_tuple(header)
-
-        values = ['1/0',100,90,10]
+        GT = None
+        #if genotype call is homozygous wheras the percentage of alt counts is higher than 5 %, change genotype call!
+        if not sample.is_het and type(sample.data.AD) == type([]):
+            try:
+                if sample.data.AD[0] / float(sample.data.DP) > 0.05:
+                    max_alt = max(sample.data.AD[1:])
+                    alt_pos = sample.data.AD.index(max_alt)
+                    GT = '0/%s'%alt_pos
+                    values = [GT]
+            except ZeroDivisionError:
+                pass
+        if not GT:
+            values = [sample.data.GT]
+        if 'PL' in sample.data._fields:
+            header = ['GT','PL','DP','AD','RO','AO']
+            call_data = vcf.model.make_calldata_tuple(header)
+            values += [sample.data.PL,
+                      sample.data.DP,
+                      sample.data.AD,
+                      ]
+            if type(sample.data.AD) == type(1):
+                values += [sample.data.AD,0]
+            else:
+                values += [sample.data.AD[0]]
+                if len(sample.data.AD[1:]) == 1:
+                    values += [sample.data.AD[1]]
+                else:
+                    values += [sample.data.AD[1:]]
+        elif sample.data.GT == '0/0' and type(sample.data.AD) == type(1):
+            header = ['GT','DP','AD','RO','AO']
+            call_data = vcf.model.make_calldata_tuple(header)
+            values += [sample.data.DP,
+                      sample.data.AD,
+                      #RO is position 0 of AD
+                      sample.data.AD,
+                      #AO should be 0
+                      0
+                      ]
+        else:
+            pass
+        #change sample.site so that it contains all the FORMAT fields in use
+        sample.site.FORMAT = ':'.join(header)
         model = vcf.model._Call(sample.site,
                                     sample.sample,
                                     call_data(*values))
@@ -577,6 +600,11 @@ class CallBase(object):
             # whether polymorphism is a SNP/methylation polymorphism.
             if not watson_sample.called or not crick_sample.called:
                 continue
+            try:
+                if '*' in watson_sample.site.ALT[0].type or crick_sample.site.ALT[0].type == '*':
+                    continue
+            except AttributeError:
+                pass
             if 'AD' in watson_sample.data._fields:
                 #create empty CallData object
                 watson_sample = self.check_change_samtools_call(watson_sample)
