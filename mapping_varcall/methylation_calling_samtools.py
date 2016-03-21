@@ -653,6 +653,7 @@ class CallBase(object):
                     self.processed_samples[sample_name]['methylated'] = crick_sample
                     try:
                         #If one or more sample has an alternate allele call it for this individual as well
+                        #TODO: find what AC means and what equivalent is in samtools vcf file
                         if sum(watson_sample.site.INFO['AC']) > 0:
                              self.processed_samples[sample_name]['snp'] = watson_sample
                     except KeyError:
