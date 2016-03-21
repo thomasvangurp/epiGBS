@@ -1,0 +1,8 @@
+File	Title	Description
+data_import	Data Import	This report describes the loading of the data into RnBeads.
+quality_control	Quality Control	This report performs assay quality validation.
+preprocessing	Preprocessing	This report presents the filtering and normalization steps applied to the dataset.
+tracks_and_tables	Tracks and Tables	This report provides contains information on exported data, generated genome browser tracks and sample summary tables.
+covariate_inference	Covariate Inference	This report infers various sample properties such as surrogate variables and cell type compositions.
+exploratory_analysis	Exploratory Analysis	This reports describes sample subgroups, methylation profiles and associations with sample annotations.
+differential_methylation	Differential Methylation	This report identifies differentially methylated sites and regions between sample groups.

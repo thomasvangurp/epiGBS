@@ -1,0 +1,8 @@
+<rnb.xml>
+	<qc.coverage.plots>false</qc.coverage.plots>
+	<filtering.greedycut>false</filtering.greedycut>
+	<exploratory.intersample>false</exploratory.intersample>
+	<exploratory.deviation.plots>false</exploratory.deviation.plots>
+	<logging.memory>true</logging.memory>
+	<disk.dump.big.matrices>true</disk.dump.big.matrices>
+</rnb.xml>

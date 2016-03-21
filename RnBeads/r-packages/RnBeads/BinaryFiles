@@ -1,0 +1,4 @@
+inst/bin/linux_x86.64/bedGraphToBigWig
+inst/bin/linux_x86.64/bedToBigBed
+inst/bin/macOSX.i386/bedGraphToBigWig
+inst/bin/macOSX.i386/bedToBigBed

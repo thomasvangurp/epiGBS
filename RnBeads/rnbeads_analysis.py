@@ -83,9 +83,9 @@ def main():
             analysis_script = run_analysis(args)
             tmp_files.append(analysis_script)
     finally:
-        # Clear all files written to the tmp directory.
-        clear_tmp(tmp_files)
-
+	# Clear all files written to the tmp directory.
+        #clear_tmp(tmp_files)
+	a=1
 
 def run_subprocess(cmd, log_message):
     """

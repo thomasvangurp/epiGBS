@@ -5,7 +5,7 @@ Version: %(version)s.0
 Author: Bjorn Wouters, Developer and Thomas van Gurp, Developer
 Maintainer: Bjorn Wouters <B.wouters@nioo.knaw.nl>
 License: GPL (>= 2)
-organism:  %(genus)s %(species)s
+organism: %(species)s %(genus)s
 common_name: %(species)s
 provider: NIOO
 provider_version: %(species)s%(version)s

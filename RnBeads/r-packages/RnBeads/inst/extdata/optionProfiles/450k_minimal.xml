@@ -1,0 +1,15 @@
+<rnb.xml>
+	<filtering.greedycut>false</filtering.greedycut>
+	<disk.dump.big.matrices>true</disk.dump.big.matrices>
+	<import.idat.chunk.size>5</import.idat.chunk.size>
+	<exploratory.intersample>false</exploratory.intersample>
+	<exploratory.correlation.qc>false</exploratory.correlation.qc>
+	<exploratory.deviation.plots>false</exploratory.deviation.plots>
+	<exploratory.clustering.heatmaps.pdf>false</exploratory.clustering.heatmaps.pdf>
+	<enforce.memory.management>true</enforce.memory.management>
+	<gz.large.files>true</gz.large.files>
+	<distribution.subsample>100000</distribution.subsample>
+	<exploratory.region.profiles></exploratory.region.profiles>
+	<region.types>promoters,tiling</region.types>
+	<differential.enrichment>false</differential.enrichment>
+</rnb.xml>
