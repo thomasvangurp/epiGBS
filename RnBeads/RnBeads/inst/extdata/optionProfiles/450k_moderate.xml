@@ -1,6 +1,0 @@
-<rnb.xml>
-	<disk.dump.big.matrices>true</disk.dump.big.matrices>
-	<enforce.memory.management>true</enforce.memory.management>
-	<gz.large.files>true</gz.large.files>
-	<distribution.subsample>1000000</distribution.subsample>
-</rnb.xml>

@@ -1,9 +1,0 @@
-RnBeads is an R package for comprehensive analysis of DNA methylation data
-obtained with any experimental protocol that provides single-CpG resolution,
-including Infinium 450K microarray and bisulfite sequencing protocols, but also
-MeDIP-seq and MBD-seq once the data have been preprocessed with
-DNA methylation inference software. RnBeads implements an analysis workflow
-that is significantly more comprehensive than those of existing tools. 
-It documents its results in a highly annotated and readable hypertext report,
-and it scales to the large sample sizes that are becoming the norm for
-DNA methylation analysis in human cohorts.
