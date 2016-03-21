@@ -142,6 +142,8 @@ def combine_record_samples(sample1, sample2):
     Returns two sample records values together.
     """
     #TODO:implement merging function for SNP calling from watson/crick with methylation polymorphisms
+    #TODO: Create records given that QR, QA, RO, AO are not available, only use AD and merge here. Check how AD records
+    #TODO: are generated when multiple calls exist.
     if not sample1.called:
         depth = sample2.data.DP
         phred_quality_ref = sample2.data.QR
@@ -166,21 +168,17 @@ def combine_record_samples(sample1, sample2):
             elif len(sample1.site.ALT) == 1 and len(sample2.site.ALT) > 1:
                 try:
                     i = sample2.site.ALT.index(sample1.site.ALT[0])
-                    phred_quality_alt = sample1.data.QA + sample2.data.QA[i]
                     alt_observations = sample1.data.AO + sample2.data.AO[i]
                     phred_quality_alt = sample1.data.QA + sample2.data.QA[i]
                 except ValueError:
-                    phred_quality_alt = sample1.data.QA
                     alt_observations = sample1.data.AO
                     phred_quality_alt = sample1.data.QA
             elif len(sample2.site.ALT) == 1 and len(sample1.site.ALT) > 1:
                 try:
                     i = sample1.site.ALT.index(sample2.site.ALT[0])
-                    phred_quality_alt = sample2.data.QA + sample1.data.QA[i]
                     alt_observations = sample2.data.AO + sample1.data.AO[i]
                     phred_quality_alt = sample2.data.QA + sample1.data.QA[i]
                 except ValueError:
-                    phred_quality_alt = sample2.data.QA
                     alt_observations = sample2.data.AO
                     phred_quality_alt = sample2.data.QA
             else:
@@ -204,8 +202,13 @@ def combine_record_samples(sample1, sample2):
     call_data = vcf.model.make_calldata_tuple(header_list)
     values = [sample1.data[0], depth, ref_observations, phred_quality_ref,
                              alt_observations, phred_quality_alt, sample1.data.GL]
-    model = vcf.model._Call(sample1.site,
+    if len(sample1.site.ALT) > len(sample2.site.ALT):
+        model = vcf.model._Call(sample1.site,
                             sample1.sample,
+                            call_data(*values))
+    else:
+        model = vcf.model._Call(sample2.site,
+                            sample2.sample,
                             call_data(*values))
     return model
 
@@ -483,6 +486,7 @@ def write_snp_file(call_base, snp_record):
 
     for sample in snp_record.samples:
         if sample.called:
+            #new field is sample.AD sample.data.AO does no longer exist
             if isinstance(sample.data.AO,list):
                 if sum(sample.data.AO) > 0:
                     total_samples += 1
@@ -543,6 +547,19 @@ class CallBase(object):
         self.min_alt_observations = min_alt_observations
         return self.qual_offset
 
+    def check_change_samtools_call(self,sample):
+        """Check variant calling in samtools provided sample"""
+        empty_sample = make_empty_sample(sample)
+        header = ['GT','DP','AO','RO']
+        call_data = vcf.model.make_calldata_tuple(header)
+
+        values = ['1/0',100,90,10]
+        model = vcf.model._Call(sample.site,
+                                    sample.sample,
+                                    call_data(*values))
+        return model
+
+
     def methylation_calling(self):
         """
         Main base calling algorithm. Determines methylation/SNP status for each sample having a watson and crick record.
@@ -560,6 +577,11 @@ class CallBase(object):
             # whether polymorphism is a SNP/methylation polymorphism.
             if not watson_sample.called or not crick_sample.called:
                 continue
+            if 'AD' in watson_sample.data._fields:
+                #create empty CallData object
+                watson_sample = self.check_change_samtools_call(watson_sample)
+                crick_sample = self.check_change_samtools_call(crick_sample)
+
 
             # Assigning the right alt base to the records.
             alt_watson = watson_sample.gt_bases.split('/')[1]
@@ -653,7 +675,6 @@ class CallBase(object):
                     self.processed_samples[sample_name]['methylated'] = crick_sample
                     try:
                         #If one or more sample has an alternate allele call it for this individual as well
-                        #TODO: find what AC means and what equivalent is in samtools vcf file
                         if sum(watson_sample.site.INFO['AC']) > 0:
                              self.processed_samples[sample_name]['snp'] = watson_sample
                     except KeyError:
@@ -826,20 +847,20 @@ class CallBase(object):
             )
 
             return processed_record
-
-        if any(sample.called for sample in snp_samples):
-            #Use different method here to make sure the number of ALT alleles matches if crick
-            #and watson are different. #TODO: determine if this method can not be used always.
-            snp_record = define_record_snp(snp_samples)
-            write_snp_file(self, snp_record)
-            self.snp_file.write_record(snp_record)
-            #snp_record_dict is purely used to determine context for CG,CHG and CHH methylation.
-            #It does not contain any useful information pertaining to SNPs
-            if self.snp_record_dict.has_key(snp_record.CHROM) == True:
-                self.snp_record_dict[snp_record.CHROM].append(snp_record)
-            else:
-                # self.snp_record_dict.clear()
-                self.snp_record_dict[snp_record.CHROM] = [snp_record]
+        #TODO: check SNP calling here
+        # if any(sample.called for sample in snp_samples):
+        #     #Use different method here to make sure the number of ALT alleles matches if crick
+        #     #and watson are different. #TODO: determine if this method can not be used always.
+        #     snp_record = define_record_snp(snp_samples)
+        #     write_snp_file(self, snp_record)
+        #     self.snp_file.write_record(snp_record)
+        #     #snp_record_dict is purely used to determine context for CG,CHG and CHH methylation.
+        #     #It does not contain any useful information pertaining to SNPs
+        #     if self.snp_record_dict.has_key(snp_record.CHROM) == True:
+        #         self.snp_record_dict[snp_record.CHROM].append(snp_record)
+        #     else:
+        #         # self.snp_record_dict.clear()
+        #         self.snp_record_dict[snp_record.CHROM] = [snp_record]
         if any(sample.called for sample in methylated_samples):
             methylation_record = define_record(self, methylated_samples)
             self.methylation_file.write_record(methylation_record)
