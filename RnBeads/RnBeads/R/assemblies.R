@@ -79,73 +79,11 @@ NULL
 .rnb.annotations <- new.env()
 
 ## Chromosomes supported by the annotation packages
-##
-sc1.chr <- read.table("/Users/thomasvangurp/Dropbox/Thomas_NIOO/bioinformatics/epiGBS/epigbs-packages/RnBeads/assemblies/sc1/bs.bed/chromosomes.txt")
-##
-sctest.chr <- read.table("/Users/thomasvangurp/Dropbox/Thomas_NIOO/bioinformatics/epiGBS/epigbs-packages/RnBeads/assemblies/sctest/bs.bed/chromosomes.txt")
-##
-sctest.chr <- read.table("/Users/thomasvangurp/Dropbox/Thomas_NIOO/bioinformatics/epiGBS/epigbs-packages/RnBeads/assemblies/sctest/bs.bed/chromosomes.txt")
-##
-sctest.chr <- read.table("/Users/thomasvangurp/Dropbox/Thomas_NIOO/bioinformatics/epiGBS/epigbs-packages/RnBeads/assemblies/sctest/bs.bed/chromosomes.txt")
-##
-sctest.chr <- read.table("/Users/thomasvangurp/Dropbox/Thomas_NIOO/bioinformatics/epiGBS/epigbs-packages/RnBeads/assemblies/sctest/bs.bed/chromosomes.txt")
-##
-sctest.chr <- read.table("/Users/thomasvangurp/Dropbox/Thomas_NIOO/bioinformatics/epiGBS/epigbs-packages/RnBeads/assemblies/sctest/bs.bed/chromosomes.txt")
-##
-sctest.chr <- read.table("/Users/thomasvangurp/Dropbox/Thomas_NIOO/bioinformatics/epiGBS/epigbs-packages/RnBeads/assemblies/sctest/bs.bed/chromosomes.txt")
-##
-sctest.chr <- read.table("/Users/thomasvangurp/Dropbox/Thomas_NIOO/bioinformatics/epiGBS/epigbs-packages/RnBeads/assemblies/sctest/bs.bed/chromosomes.txt")
-##
-sc1.chr <- read.table("/Users/thomasvangurp/Dropbox/Thomas_NIOO/bioinformatics/epiGBS/epigbs-packages/RnBeads/assemblies/sc1/bs.bed/chromosomes.txt")
-##
-sctest.chr <- read.table("/Users/thomasvangurp/Dropbox/Thomas_NIOO/bioinformatics/epiGBS/epigbs-packages/RnBeads/assemblies/sctest/bs.bed/chromosomes.txt")
-##
-sctest.chr <- read.table("/Users/thomasvangurp/Dropbox/Thomas_NIOO/bioinformatics/epiGBS/epigbs-packages/RnBeads/assemblies/sctest/bs.bed/chromosomes.txt")
-##
-sc2.chr <- read.table("/Users/thomasvangurp/Dropbox/Thomas_NIOO/bioinformatics/epiGBS/epigbs-packages/RnBeads/assemblies/sc2/bs.bed/chromosomes.txt")
-##
-sc1.chr <- read.table("/Users/thomasvangurp/Dropbox/Thomas_NIOO/bioinformatics/epiGBS/epigbs-packages/RnBeads/assemblies/sc1/bs.bed/chromosomes.txt")
-##
-sctest2.chr <- read.table("/Users/thomasvangurp/Dropbox/Thomas_NIOO/bioinformatics/epiGBS/epigbs-packages/RnBeads/assemblies/sctest2/bs.bed/chromosomes.txt")
-##
-spalt1.chr <- read.table("/Users/thomasvangurp/Dropbox/Thomas_NIOO/bioinformatics/epiGBS/epigbs-packages/RnBeads/assemblies/spalt1/bs.bed/chromosomes.txt")
-##
-faljap1.chr <- read.table("/Users/thomasvangurp/Dropbox/Thomas_NIOO/bioinformatics/epiGBS/epigbs-packages/RnBeads/assemblies/faljap1/bs.bed/chromosomes.txt")
+
 ##%(chromosomes)s
 CHROMOSOMES.L2S <- list("hg19" = c(1:22, "X", "Y"), "mm9" = c(1:19, "X", "Y"), "mm10" = c(1:19, "X", "Y"),
 	"rn5" = c(1:20, "X")
-##
-,'sc1' = sc1.chr[[1]]
-##
-,'sctest' = sctest.chr[[1]]
-##
-,'sctest' = sctest.chr[[1]]
-##
-,'sctest' = sctest.chr[[1]]
-##
-,'sctest' = sctest.chr[[1]]
-##
-,'sctest' = sctest.chr[[1]]
-##
-,'sctest' = sctest.chr[[1]]
-##
-,'sctest' = sctest.chr[[1]]
-##
-,'sc1' = sc1.chr[[1]]
-##
-,'sctest' = sctest.chr[[1]]
-##
-,'sctest' = sctest.chr[[1]]
-##
-,'sc2' = sc2.chr[[1]]
-##
-,'sc1' = sc1.chr[[1]]
-##
-,'sctest2' = sctest2.chr[[1]]
-##
-,'spalt1' = spalt1.chr[[1]]
-##
-,'faljap1' = faljap1.chr[[1]]
+
 ##%(assembly_table)s
 	)
 CHROMOSOMES.S2L <- lapply(CHROMOSOMES.L2S, function(x) { paste0("chr", x) })
@@ -245,87 +183,7 @@ get.genome.data <- function(assembly) {
     genome.data <- Rnorvegicus
   }
 ##
-##
-else if (assembly == 'sc1') {
-suppressPackageStartupMessages(require(BSgenome.Scabiosacolumbaria.NIOO.v1))
-genome.data <- Scabiosa
-}
-##
-else if (assembly == 'sctest') {
-suppressPackageStartupMessages(require(BSgenome.Scabiosacolumbia.NIOO.v1.1))
-genome.data <- Scabiosa
-}
-##
-##
-else if (assembly == 'sctest') {
-suppressPackageStartupMessages(require(BSgenome.Scabiosacolumbia.NIOO.v1.1))
-genome.data <- Scabiosa
-}
-##
-else if (assembly == 'sctest') {
-suppressPackageStartupMessages(require(BSgenome.Scabiosacolumbia.NIOO.v1.1))
-genome.data <- Scabiosa
-}
-##
-else if (assembly == 'sctest') {
-suppressPackageStartupMessages(require(BSgenome.Scabiosacolumbia.NIOO.v1.1))
-genome.data <- Scabiosa
-}
-##
-else if (assembly == 'sctest') {
-suppressPackageStartupMessages(require(BSgenome.Scabiosacolumbia.NIOO.v1.1))
-genome.data <- Scabiosa
-}
-##
-else if (assembly == 'sctest') {
-suppressPackageStartupMessages(require(BSgenome.Scabiosacolumbia.NIOO.v1.1))
-genome.data <- Scabiosa
-}
-##
-else if (assembly == 'sctest') {
-suppressPackageStartupMessages(require(BSgenome.Scabiosacolumbia.NIOO.v1.1))
-genome.data <- Scabiosa
-}
-##
-else if (assembly == 'sc1') {
-suppressPackageStartupMessages(require(BSgenome.Scabiosacolumbaria.NIOO.v1))
-genome.data <- Scabiosa
-}
-##
-else if (assembly == 'sctest') {
-suppressPackageStartupMessages(require(BSgenome.Scabiosacolumbia.NIOO.v1.1))
-genome.data <- Scabiosa
-}
-##
-else if (assembly == 'sctest') {
-suppressPackageStartupMessages(require(BSgenome.Scabiosacolumbia.NIOO.v1.1))
-genome.data <- Scabiosa
-}
-##
-else if (assembly == 'sc2') {
-suppressPackageStartupMessages(require(BSgenome.Scabiosacolumbaria.NIOO.v2))
-genome.data <- Scabiosa
-}
-##
-else if (assembly == 'sc1') {
-suppressPackageStartupMessages(require(BSgenome.Scabiosacolumbaria.NIOO.v1))
-genome.data <- Scabiosa
-}
-##
-else if (assembly == 'sctest2') {
-suppressPackageStartupMessages(require(BSgenome.Scabiosacolumbia.NIOO.v1.2))
-genome.data <- Scabiosa
-}
-##
-else if (assembly == 'spalt1') {
-suppressPackageStartupMessages(require(BSgenome.Spartinaalterniflora.NIOO.v1.0))
-genome.data <- Spartina
-}
-##
-else if (assembly == 'faljap1') {
-suppressPackageStartupMessages(require(BSgenome.Fallopiajaponica.NIOO.v1.0))
-genome.data <- Fallopia
-}
+
 ##%(assembly_package)s
   else {
     stop("unsupported assembly")
