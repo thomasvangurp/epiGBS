@@ -1,0 +1,123 @@
+<tool id="rnbeads" name ="RnBeads">
+	<description>RnBeads R package for galaxy</description>
+    <!--TODO: fix hard-coded path for galaxy-dist-->
+	<command interpreter="python">/mnt/data/home/NIOO/galaxy/galaxy-dist/tool-data/RnBeads/rnbeads_analysis.py
+        #import os
+
+        #if $annotation
+        #if os.path.isfile(os.path.join( $__new_file_path__, 'annotation.txt'))
+        ##TODO: if multiplex annotation files are to be ran this is to be changed here as well.
+        ##Iterate over all existing annotation files and give
+        #set delete_file = os.remove(os.path.join( $__new_file_path__, 'annotation.txt'))
+        #end if
+
+        #set $joined_annotation = os.path.join( $__new_file_path__, 'annotation.txt')
+        #set symlink = os.symlink( '%s'%$annotation, $joined_annotation )
+        #end if
+
+        #if $analyse_type.analyse == '-both'
+            add_and_analysis
+            ##TODO: fix hardcoded part here.
+            -lp /mnt/data/home/NIOO/galaxy/R
+            -f $input_fasta
+            -b $input_bed
+            #if $annotation
+                -a $joined_annotation
+            #end if
+            -sf $sample_file
+            -s $analyse_type.species_name
+            -g $analyse_type.genus_name
+            -ac $analyse_type.accession_code
+            -v $analyse_type.version
+            -tmp $analyse_type.tmp_dir
+            -o $output
+            -c $analyse_type.cores
+            -mr $analyse_type.min_reads
+        #else if $analyse_type.analyse == '-add'
+            add_only
+            ##TODO: fix hardcoded part here.
+            -lp /mnt/data/home/NIOO/galaxy/R
+            -f $input_fasta
+            -b $input_bed
+            -sf $sample_file
+            -s $analyse_type.species_name
+            -g $analyse_type.genus_name
+            -ac $analyse_type.accession_code
+            -v $analyse_type.version
+            -tmp $analyse_type.tmp_dir
+            -mr $analyse_type.min_reads
+        #else
+            analysis_only
+            ##TODO: fix hardcoded part here.
+            -lp /mnt/data/home/NIOO/galaxy/R
+            #if $annotation
+                -a $joined_annotation
+            #end if
+            -s $analyse_type.species_name
+            -g $analyse_type.genus_name
+            -ac $analyse_type.accession_code
+            -v $analyse_type.version
+            -tmp $analyse_type.tmp_dir
+            -o $output
+            -c $analyse_type.cores
+        #end if
+    </command>
+	<inputs>
+        <conditional name="analyse_type">
+            <param name="analyse" type="select" label="analyse type">
+                <option value="-add">Only add genome to package</option>
+                <option value="-analyse">Analyse (existing) genome</option>
+                <option value="-both" selected="true">Add genome and analyse it</option>
+            </param>
+            <when value="-both">
+                <param type="data" name="input_fasta" label="input fasta file" format="fasta" help="Dataset needs to be in .fasta format."/>
+                <param name="input_bed" type="data" format="bed" label="Input bed file"  help="Needs to be in a specific layout (see help)." />
+                <!--TODO: check repeat function and fix to allow for multiple annotation to be ran in RNbeads-->
+                <param name="annotation" type="data" format="txt" label="Input annotation file" help="layout of the files differs in clusters and full chromosomes." optional="true" />
+                <param name="sample_file" type="data" format="csv" label="Sample file" help="Has a specific layout, see help." />
+                <param name="species_name" type="text" label="Species name" help="Latin species name (Capital first letter)." />
+                <param name="genus_name" type="text" label="Genus name" help="Latin genus name (No capital letters)." />
+                <param name="accession_code" type="text" label="Accession code" help="The accession code mostly first letter of the species and genus name + number. i.e. sc1, hg19, mm9." />
+                <param name="version" type="integer" label="Version" help="Version of the genome to be forged." value="1"/>
+                <param name="tmp_dir" type="text" label="Tmp directory" value="/tmp/" help="Directory where some files are temporary written to."/>
+                <param name="cores" type="integer" label="Number of cores" value="2" help="Number of cores you want to use for the analysis (default is 2)."/>
+                <param name="min_reads" type="integer" label="Minimal number of reads" value="5" help="Minimal number of total reads a CpG site has to have before processing."/>
+            </when>
+            <when value="-add">
+                <param type="data" name="input_fasta" label="input fasta file" format="fasta" help="Dataset needs to be in .fasta format."/>
+                <param name="input_bed" type="data" format="bed" label="Input bed file"  help="Needs to be in a specific layout (see help)." />
+                <param name="sample_file" type="data" format="csv" label="Sample file" help="Has a specific layout, see help." />
+                <param name="species_name" type="text" label="Species name" help="Latin species name (Capital first letter)." />
+                <param name="genus_name" type="text" label="Genus name" help="Latin genus name (No capital letters)." />
+                <param name="accession_code" type="text" label="Accession code" help="The accession code mostly first letter of the species and genus name + number. i.e. sc1, hg19, mm9." />
+                <param name="version" type="integer" label="Version" help="Version of the genome to be forged." value="1"/>
+                <param name="tmp_dir" type="text" label="Tmp directory" value="/tmp/" help="Directory where some files are temporary written to."/>
+                <param name="min_reads" type="integer" label="Minimal number of reads" value="5" help="Minimal number of total reads a CpG site has to have before processing."/>
+            </when>
+            <when value="-analyse">
+                <param name="annotation" type="data" format="txt" label="Input annotation file" help="layout of the files differs in clusters and full chromosomes." optional="true" />
+                <param name="species_name" type="text" label="Species name" help="Latin species name (Capital first letter)." />
+                <param name="genus_name" type="text" label="Genus name" help="Latin genus name (No capital letters)." />
+                <param name="accession_code" type="text" label="Accession code" help="The accession code mostly first letter of the species and genus name + number. i.e. sc1, hg19, mm9." />
+                <param name="version" type="integer" label="Version" help="Version of the genome to be forged." value="1"/>
+                <param name="tmp_dir" type="text" label="Tmp directory" value="/tmp/" help="Directory where some files are temporary written to."/>
+                <param name="cores" type="integer" label="Number of cores" value="2" help="Number of cores you want to use for the analysis (default is 2)."/>
+            </when>
+        </conditional>
+	</inputs>
+	<outputs>
+		<data name="output" format="tar.gz" label="RnBeads analysis"/>
+	</outputs>
+	<help>
+        <!--TODO: write help for this function!-->
+	</help>
+</tool>
+
+<!--
+/path/to/your/galaxy/R (or whatever folder you want to use)(optional) [2]
+
+Not Working!
+<repeat name="input_annotation" title="Annotation file(s)" min="0">
+    <param name="annotation" type="data" format="bed" label="Annotation .txt file" />
+</repeat>
+-->
