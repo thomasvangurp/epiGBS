@@ -119,3 +119,14 @@ Example:
 python rnbeads_analysis.py add_and_analysis -f /path/to/my/fasta.fa -b /path/to/my/file.bed -a /path/to/my/annotation.txt -sf /path/to/sample.csv -tmp /tmp/ -template /path/to/RnBeads/templates/ -s Homo -g sapiens -v 1 -ac hs1 -lp /path/to/R/packages/ -c 8
  
 
+Dependencies:
+-------------
+
+**R (>= 3.0.0)**
+BiocGenerics, GenomicRanges, MASS, RColorBrewer, cluster, ff, fields, ggplot2 (>= 0.9.2), gplots, gridExtra, limma, matrixStats, methods, illuminaio, methylumi, plyr
+
+**Bioconductor 3.2.4** 
+
+**Python (2.7.6):**
+
+Argparse: 1.2.1, biopython: 1.66 
