@@ -109,6 +109,8 @@ def parse_vcf(args):
             min_alt_observations = 2
             # min_quality = call_base.set_offsets(quality_offset, min_alt_observations)
             call_base.write_records()
+            if int(call_base.watson_record.CHROM) > 1000:
+                break
 
     # If there are no SNP's in the cluster/chromosome, the igv file needs to be written without a sliding window.
     if call_base.methylated_records:
@@ -132,8 +134,8 @@ def make_sample(sample, genotype):
     """
     return vcf.model._Call(sample.site,
                            sample.sample,
-                           (genotype, sample.data.DP, sample.data.RO, sample.data.QR,
-                            sample.data.AO, sample.data.QA, sample.data.GL))
+                           (genotype, sample.data.PL,sample.data.DP, sample.data.AD, sample.data.RO,
+                            sample.data.AO))
 
 
 def combine_record_samples(sample1, sample2):
@@ -185,8 +187,9 @@ def combine_record_samples(sample1, sample2):
     header = sample1.site.FORMAT
     header_list = header.split(':')
     call_data = vcf.model.make_calldata_tuple(header_list)
-    values = [sample1.data[0], depth, ref_observations,
+    values = [sample1.data.GT,sample1.data.PL, sample1.data.AD,depth, ref_observations,
                              alt_observations]
+
     if len(sample1.site.ALT) > len(sample2.site.ALT):
         model = vcf.model._Call(sample1.site,
                             sample1.sample,
@@ -538,14 +541,17 @@ class CallBase(object):
         GT = None
         #if genotype call is homozygous wheras the percentage of alt counts is higher than 5 %, change genotype call!
         if not sample.is_het and type(sample.data.AD) == type([]):
-            try:
-                if sample.data.AD[0] / float(sample.data.DP) > 0.05:
-                    max_alt = max(sample.data.AD[1:])
-                    alt_pos = sample.data.AD.index(max_alt)
-                    GT = '0/%s'%alt_pos
-                    values = [GT]
-            except ZeroDivisionError:
+            if sample.data.AD[0] == sum(sample.data.AD):
                 pass
+            else:
+                try:
+                    if sample.data.AD[0] / float(sample.data.DP) > 0.05:
+                        max_alt = max(sample.data.AD[1:])
+                        alt_pos = sample.data.AD.index(max_alt)
+                        GT = '0/%s'%alt_pos
+                        values = [GT]
+                except ZeroDivisionError:
+                    pass
         if not GT:
             values = [sample.data.GT]
         if 'PL' in sample.data._fields:
@@ -557,6 +563,8 @@ class CallBase(object):
                       ]
             if type(sample.data.AD) == type(1):
                 values += [sample.data.AD,0]
+            elif sample.site.ALT[0].type == '*':
+                values += [sample.data.AD[0],0]
             else:
                 values += [sample.data.AD[0]]
                 if len(sample.data.AD[1:]) == 1:
@@ -582,7 +590,77 @@ class CallBase(object):
                                     call_data(*values))
         return model
 
+    def call_samples(self,record):
+        samples_out = []
+        alleles_observed = []
+        for sample in record:
+            out_count = {}
+            for nt,count in zip(record[0].site.ALT,sample.data.AD[1:]):
+                if count and str(nt) != '*':
+                    if count / float(sample.data.DP) > 0.05:
+                        out_count[str(nt)] = count
+                        if nt not in alleles_observed:
+                            alleles_observed.append(nt)
+            if out_count == {}:
+                GT = '0/0'
+            else:
+                max_alt_pos = sample.data.AD.index(max(sample.data.AD[1:]))
+                if sum(out_count.values()) / float(sample.data.DP) > 0.95:
+                    GT = '%s/%s'%(max_alt_pos,max_alt_pos)
+                else:
+                    GT = '0/%s'%(max_alt_pos)
+            header = ['GT','PL','DP','AD','RO','AO']
+            call_data = vcf.model.make_calldata_tuple(header)
+            #make DP records compatible with freebayes vcf file type
+            values = [GT,
+                      sample.data.PL,
+                      sample.data.DP,
+                      sample.data.AD,
+                      ]
+            #Add RO
+            if sample.data.AD[0] == 0:
+                values.append(None)
+            else:
+                values.append(sample.data.AD[0])
+            if out_count != {}:
+                if len(out_count) == 1:
+                    values += [int(sample.data.AD[1])]
+                else:
+                    values += [sample.data.AD[1:1+len(out_count)]]
+            elif int(sample.data.AD[1]) > 0:
+                values += [int(sample.data.AD[1])]
+            else:
+                values += [0]
+            sample.site.FORMAT = ':'.join(header)
+            model = vcf.model._Call(sample.site,
+                                    sample.sample,
+                                    call_data(*values))
+            samples_out.append(model)
+        return samples_out,alleles_observed
 
+    def call_genotypes(self):
+        """"call genotypes for watson and crick"""
+        self.watson_record.samples,obs_alleles = self.call_samples(self.watson_record.samples)
+        if len(obs_alleles) > 0:
+            self.watson_record.ALT = list(obs_alleles)
+            self.watson_record.alleles = [self.watson_record.REF] + list(obs_alleles)
+        else:
+            self.watson_record.ALT = [None]
+
+        self.crick_record.samples,obs_alleles = self.call_samples(self.crick_record.samples)
+        if len(obs_alleles) > 0:
+            self.crick_record.ALT = list(obs_alleles)
+            self.crick_record.alleles = [self.crick_record.REF] + list(obs_alleles)
+        else:
+            self.crick_record.ALT = [None]
+
+        if str(self.watson_record.alleles[-1]) == '<*>':
+            self.watson_record.alleles = self.watson_record.alleles[:-1] #+ [None]
+        if str(self.crick_record.alleles[-1]) == '<*>':
+            self.crick_record.alleles = self.crick_record.alleles[:-1] #+ [None]
+
+
+            
     def methylation_calling(self):
         """
         Main base calling algorithm. Determines methylation/SNP status for each sample having a watson and crick record.
@@ -595,26 +673,29 @@ class CallBase(object):
         # Determine the reference base at the position of the VCF call.
         ref_base = self.watson_record.REF
         #loop watson and crick record for combined samples.
+        self.call_genotypes()
         for watson_sample, crick_sample in izip(self.watson_record, self.crick_record):
             # If there are is no call for both the watson and crick record sample, continue as we can not determine
             # whether polymorphism is a SNP/methylation polymorphism.
             if not watson_sample.called or not crick_sample.called:
                 continue
-            try:
-                if '*' in watson_sample.site.ALT[0].type or crick_sample.site.ALT[0].type == '*':
-                    continue
-            except AttributeError:
-                pass
+            # try:
+            #     if '*' in watson_sample.site.ALT[0].type or crick_sample.site.ALT[0].type == '*':
+            #         continue
+            # except AttributeError:
+            #     pass
             if 'AD' in watson_sample.data._fields:
                 #create empty CallData object
-                watson_sample = self.check_change_samtools_call(watson_sample)
-                crick_sample = self.check_change_samtools_call(crick_sample)
-
-
+                # watson_sample = self.check_change_samtools_call(watson_sample)
+                # crick_sample = self.check_change_samtools_call(crick_sample)
+                # assert watson_sample.data.RO + watson_sample.data.AO == sum(watson_sample.data.AD)
+                # assert crick_sample.data.RO + crick_sample.data.AO == sum(crick_sample.data.AD)
+                if type(watson_sample.data.AD) == type(1):
+                    pass
             # Assigning the right alt base to the records.
             alt_watson = watson_sample.gt_bases.split('/')[1]
             alt_crick = crick_sample.gt_bases.split('/')[1]
-
+        
             sample_name = watson_sample.sample
             if ref_base == 'C':
                 if alt_crick == 'C' and alt_watson in 'CT':
@@ -692,7 +773,6 @@ class CallBase(object):
                         if alt_crick in watson_sample.site.ALT:
                             alt_index = watson_sample.site.ALT.index(alt_crick)
                             alt_count = watson_sample.data.AO[alt_index]
-                            alt_qsum = watson_sample.data.QA[alt_index]
                             t_count = watson_sample.data.AO[watson_sample.site.ALT.index('T')]
                             if alt_count > t_count:
                                 self.processed_samples[sample_name]['snp'] = crick_sample
