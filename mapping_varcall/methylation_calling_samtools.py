@@ -616,12 +616,9 @@ class CallBase(object):
                       sample.data.PL,
                       sample.data.DP,
                       sample.data.AD,
+                      sample.data.AD[0]
                       ]
             #Add RO
-            if sample.data.AD[0] == 0:
-                values.append(None)
-            else:
-                values.append(sample.data.AD[0])
             if out_count != {}:
                 if len(out_count) == 1:
                     values += [int(sample.data.AD[1])]
