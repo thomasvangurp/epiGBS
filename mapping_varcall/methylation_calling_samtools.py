@@ -604,7 +604,7 @@ class CallBase(object):
             if out_count == {}:
                 GT = '0/0'
             else:
-                max_alt_pos = sample.data.AD.index(max(sample.data.AD[1:]))
+                max_alt_pos = sample.data.AD[1:].index(max(sample.data.AD[1:])) + 1
                 if sum(out_count.values()) / float(sample.data.DP) > 0.95:
                     GT = '%s/%s'%(max_alt_pos,max_alt_pos)
                 else:
@@ -612,6 +612,7 @@ class CallBase(object):
             header = ['GT','PL','DP','AD','RO','AO']
             call_data = vcf.model.make_calldata_tuple(header)
             #make DP records compatible with freebayes vcf file type
+            assert GT != None
             values = [GT,
                       sample.data.PL,
                       sample.data.DP,
@@ -633,7 +634,28 @@ class CallBase(object):
                                     sample.sample,
                                     call_data(*values))
             samples_out.append(model)
-        return samples_out,alleles_observed
+        #Make sure that the original order of the alternate alleles is preserved
+        # al_obs = []
+        # for alt_original in alt_alleles:
+        #     if alt_original in alleles_observed:
+        #         al_obs.append(alt_original)
+        # alleles_observed = al_obs
+        #make sure that the number of the alt position corresponds to the correct allels
+        final_out = []
+        for sample in samples_out:
+            if sample.gt_alleles != ['0','0']:
+                nt0,nt1 = sample.gt_bases.split('/')
+                if nt0 == sample.site.REF:
+                    sample.gt_alleles = ['0']
+                else:
+                    sample.gt_alleles = [str(alleles_observed.index(nt0))]
+                if nt1 == sample.site.REF:
+                    sample.gt_alleles += ['0']
+                else:
+                    sample.gt_alleles += [str(alleles_observed.index(nt1))]
+                sample.gt_nums = '/'.join(sample.gt_alleles)
+            final_out.append(sample)
+        return final_out,alleles_observed
 
     def call_genotypes(self):
         """"call genotypes for watson and crick"""
