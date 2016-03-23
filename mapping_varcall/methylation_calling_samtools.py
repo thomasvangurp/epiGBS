@@ -104,12 +104,14 @@ def parse_vcf(args):
             #         continue
             #Call methylation / SNPs: method of callbase class
             #TODO: check quality parameters elsewhere
-            call_base.methylation_calling()
+            return_code = call_base.methylation_calling()
+            if not return_code:
+                continue
             quality_offset = args.min_quality
             min_alt_observations = 2
             # min_quality = call_base.set_offsets(quality_offset, min_alt_observations)
             call_base.write_records()
-            if int(call_base.watson_record.CHROM) > 1000:
+            if int(call_base.watson_record.CHROM) > 100:
                 break
 
     # If there are no SNP's in the cluster/chromosome, the igv file needs to be written without a sliding window.
@@ -134,7 +136,7 @@ def make_sample(sample, genotype):
     """
     return vcf.model._Call(sample.site,
                            sample.sample,
-                           (genotype, sample.data.PL,sample.data.DP, sample.data.AD, sample.data.RO,
+                           (genotype,sample.data.DP, sample.data.AD, sample.data.RO,
                             sample.data.AO))
 
 
@@ -154,51 +156,58 @@ def combine_record_samples(sample1, sample2):
         ref_observations = sample1.data.RO
         alt_observations = sample1.data.AO
     else:
-        #Crude way of merging calldata from 2 records into new record..
+        #determine on which sample we should base output record
+        alt_observations = []
         depth = sample1.data.DP + sample2.data.DP
         ref_observations = sample1.data.RO + sample2.data.RO
+        if len(sample1.site.ALT) > len(sample2.site.ALT):
+            out_prim = sample1
+            out_sec = sample2
+        elif len(sample2.site.ALT) > len(sample1.site.ALT):
+            out_prim = sample2
+            out_sec = sample1
+        elif sample1.site.ALT == sample2.site.ALT:
+            out_prim = sample2
+            out_sec = sample1
+        elif sample1.site.ALT in [None,[None]]:
+            out_prim = sample2
+            out_sec = sample1
+        elif sample2.site.ALT in [None,[None]]:
+            out_prim = sample1
+            out_sec = sample2
+        else:
+            #TODO: make SNP calls when methylation changes alt alleles
+            out_prim = sample1
+            out_sec = sample2
         try:
-            if sample1.site.ALT.__len__() + sample2.site.ALT.__len__()<=2:
-                alt_observations = sample1.data.AO + sample2.data.AO
-            elif len(sample1.site.ALT) == 1 and len(sample2.site.ALT) > 1:
-                try:
-                    i = sample2.site.ALT.index(sample1.site.ALT[0])
-                    alt_observations = sample1.data.AO + sample2.data.AO[i]
-                except ValueError:
-                    alt_observations = sample1.data.AO
-            elif len(sample2.site.ALT) == 1 and len(sample1.site.ALT) > 1:
-                try:
-                    i = sample1.site.ALT.index(sample2.site.ALT[0])
-                    alt_observations = sample2.data.AO + sample1.data.AO[i]
-                except ValueError:
-                    alt_observations = sample2.data.AO
-            else:
-                alt_observations = []
-                for i,base in enumerate(sample1.site.ALT):
-
-                    alt_obs = sample1.data.AO[i]
-                    if base in sample2.site.ALT:
-                        i2 = sample2.site.ALT.index(base)
-                        alt_obs += sample2.data.AO[i2]
-                    alt_observations.append(alt_obs)
-
+            for n,nt in enumerate(out_prim.site.ALT):
+                if nt not in out_sec.site.ALT:
+                    if str(nt) == 'C' and 'T' in [str(i) for i in out_sec.site.ALT]:
+                        print 'SNP masked by meth polymorphism'
+                    if str(nt) == 'T' and 'C' in [str(i) for i in out_sec.site.ALT]:
+                        print 'SNP masked by meth polymorphism'
+                    alt_observations.append(out_prim.data.AO[n])
+                else:
+                    sec_index = out_sec.site.ALT.index(nt)
+                    sec_count = out_sec.data.AO[sec_index]
+                    prim_count = out_prim.data.AO[n]
+                    out_count = 0
+                    for add in [prim_count,sec_count]:
+                        if type(add) == type(1):
+                            out_count += add
+                    alt_observations.append(out_count)
+            header = sample1.site.FORMAT
+            header_list = header.split(':')
+            call_data = vcf.model.make_calldata_tuple(header_list)
+            values = [out_prim.data.GT,depth,out_prim.data.AD,ref_observations,
+                      alt_observations]
+            model = vcf.model._Call(out_prim.site,
+                                out_prim.sample,
+                                call_data(*values))
+            return model
         except TypeError:
-            return make_empty_sample(sample1)
-    header = sample1.site.FORMAT
-    header_list = header.split(':')
-    call_data = vcf.model.make_calldata_tuple(header_list)
-    values = [sample1.data.GT,sample1.data.PL, sample1.data.AD,depth, ref_observations,
-                             alt_observations]
+            return out_prim
 
-    if len(sample1.site.ALT) > len(sample2.site.ALT):
-        model = vcf.model._Call(sample1.site,
-                            sample1.sample,
-                            call_data(*values))
-    else:
-        model = vcf.model._Call(sample2.site,
-                            sample2.sample,
-                            call_data(*values))
-    return model
 
 
 def write_igv_file(call_base, methyl_record):
@@ -324,6 +333,8 @@ def write_igv_file(call_base, methyl_record):
                 else:
                     return 0
         except TypeError:
+            return sample.data.RO
+        except IndexError:
             return sample.data.RO
 
     def calc_ratio(sample):
@@ -474,17 +485,26 @@ def write_snp_file(call_base, snp_record):
 
     for sample in snp_record.samples:
         if sample.called:
-            #new field is sample.AD sample.data.AO does no longer exist
-            if isinstance(sample.data.AO,list):
-                if sum(sample.data.AO) > 0:
-                    total_samples += 1
-                for i, alt_base in enumerate(sample.site.ALT):
-                    snp_dict[str(alt_base)].update({sample.sample: sample.data.AO[i]})
-            elif isinstance(sample.data.AO, int):
-                if sample.data.AO > 0:
-                    total_samples += 1
-                    alt_base = str(sample.site.ALT[0])
-                    snp_dict[alt_base].update({sample.sample: sample.data.AO})
+            try:
+                #new field is sample.AD sample.data.AO does no longer exist
+                if isinstance(sample.data.AO,list) and len(sample.data.AO) > 1:
+                    if sum(sample.data.AO) > 0:
+                        total_samples += 1
+                    for i, alt_base in enumerate(sample.site.ALT):
+                        snp_dict[str(alt_base)].update({sample.sample: sample.data.AO[i]})
+                #TODO: make sure sample.site contains relevant alt alleles
+                elif sample.data.AO in [None,[None]] or sample.site in [None,[None]]:
+                    continue
+                elif len(sample.data.AO) == 1:
+                    snp_dict[str(sample.site.ALT[0])].update({sample.sample:sample.data.AO[0]})
+                elif isinstance(sample.data.AO, int):
+                    if sample.data.AO > 0:
+                        total_samples += 1
+                        alt_base = str(sample.site.ALT[0])
+                        snp_dict[alt_base].update({sample.sample: sample.data.AO})
+            except KeyError:
+                continue
+
 
     call_base.snp_output_file.write(str(snp_record.CHROM) + '\t' + str(snp_record.POS) +
                                     '\t' + str(total_samples))
@@ -555,10 +575,9 @@ class CallBase(object):
         if not GT:
             values = [sample.data.GT]
         if 'PL' in sample.data._fields:
-            header = ['GT','PL','DP','AD','RO','AO']
+            header = ['GT','DP','AD','RO','AO']
             call_data = vcf.model.make_calldata_tuple(header)
-            values += [sample.data.PL,
-                      sample.data.DP,
+            values += [sample.data.DP,
                       sample.data.AD,
                       ]
             if type(sample.data.AD) == type(1):
@@ -593,90 +612,92 @@ class CallBase(object):
     def call_samples(self,record):
         samples_out = []
         alleles_observed = []
-        for sample in record:
+        header = ['GT','DP','AD','RO','AO']
+        call_data = vcf.model.make_calldata_tuple(header)
+        for sample in record.samples:
             out_count = {}
-            for nt,count in zip(record[0].site.ALT,sample.data.AD[1:]):
-                if count and str(nt) != '*':
+            for pos,nt in enumerate(record.ALT):
+                count = sample.data.AD[pos+1]
+                if count:
                     if count / float(sample.data.DP) > 0.05:
                         out_count[str(nt)] = count
-                        if nt not in alleles_observed:
-                            alleles_observed.append(nt)
             if out_count == {}:
+                #only reference bases were found, sample is homozygous reference
                 GT = '0/0'
-            else:
-                max_alt_pos = sample.data.AD[1:].index(max(sample.data.AD[1:])) + 1
-                if sum(out_count.values()) / float(sample.data.DP) > 0.95:
-                    GT = '%s/%s'%(max_alt_pos,max_alt_pos)
+            elif len(out_count) == 1:
+                #only one alternate allele found
+                alt_pos = [str(nt) for nt in record.ALT].index(out_count.keys()[0]) + 1
+                if sample.data.AD[0] / float(sample.data.DP) > 0.05:
+                    GT = '0/%s'%alt_pos
                 else:
-                    GT = '0/%s'%(max_alt_pos)
-            header = ['GT','PL','DP','AD','RO','AO']
-            call_data = vcf.model.make_calldata_tuple(header)
-            #make DP records compatible with freebayes vcf file type
-            assert GT != None
+                    GT = '%s/%s'%(alt_pos,alt_pos)
+            else:
+                if sample.data.AD[0] / float(sample.data.DP) > 0.05:
+                    GT = ['0']
+                    i = 1
+                else:
+                    i = 2
+                    GT = []
+                #more than one alternate allele found determine top 2 alleles
+                max_values = sorted(out_count.values())[:i]
+                for value in max_values:
+                    for nt,count in out_count.items():
+                        if count == value:
+                            alt_pos = [str(v) for v in record.ALT].index(str(nt)) + 1
+                            GT.append(str(alt_pos))
+                GT = '/'.join(GT)
+            AO = [count for (count,allele) in zip(sample.data.AD[1:-1],sample.site.ALT) if allele in record.ALT]
+            if AO == []:
+                AO = None
             values = [GT,
-                      sample.data.PL,
                       sample.data.DP,
                       sample.data.AD,
-                      sample.data.AD[0]
+                      sample.data.AD[0],
+                      AO
                       ]
-            #Add RO
-            if out_count != {}:
-                if len(out_count) == 1:
-                    values += [int(sample.data.AD[1])]
-                else:
-                    values += [sample.data.AD[1:1+len(out_count)]]
-            elif int(sample.data.AD[1]) > 0:
-                values += [int(sample.data.AD[1])]
-            else:
-                values += [0]
             sample.site.FORMAT = ':'.join(header)
             model = vcf.model._Call(sample.site,
                                     sample.sample,
                                     call_data(*values))
+            model.site = record
             samples_out.append(model)
-        #Make sure that the original order of the alternate alleles is preserved
-        # al_obs = []
-        # for alt_original in alt_alleles:
-        #     if alt_original in alleles_observed:
-        #         al_obs.append(alt_original)
-        # alleles_observed = al_obs
-        #make sure that the number of the alt position corresponds to the correct allels
-        final_out = []
-        for sample in samples_out:
-            if sample.gt_alleles != ['0','0']:
-                nt0,nt1 = sample.gt_bases.split('/')
-                if nt0 == sample.site.REF:
-                    sample.gt_alleles = ['0']
-                else:
-                    sample.gt_alleles = [str(alleles_observed.index(nt0))]
-                if nt1 == sample.site.REF:
-                    sample.gt_alleles += ['0']
-                else:
-                    sample.gt_alleles += [str(alleles_observed.index(nt1))]
-                sample.gt_nums = '/'.join(sample.gt_alleles)
-            final_out.append(sample)
-        return final_out,alleles_observed
+        record.samples = samples_out
+        try:
+            assert len(record.samples[0].data.AO) == len(record.samples[0].site.ALT)
+        except TypeError:
+            assert len(record.samples[0].site.ALT) == 1
+
+
+        return record
 
     def call_genotypes(self):
         """"call genotypes for watson and crick"""
-        self.watson_record.samples,obs_alleles = self.call_samples(self.watson_record.samples)
-        if len(obs_alleles) > 0:
-            self.watson_record.ALT = list(obs_alleles)
-            self.watson_record.alleles = [self.watson_record.REF] + list(obs_alleles)
-        else:
-            self.watson_record.ALT = [None]
+        #determine which alt records to keep for watson
+        #only alt records that are present with more than 5% in any sample are preserved
+        keep_nt = []
+        for pos,nt in enumerate(self.watson_record.ALT[:-1]):
+            max_pct = max([sample.data.AD[pos+1]/ float(sample.data.DP) for sample in self.watson_record.samples if sample.data.DP != 0])
+            if max_pct > 0.05:
+                keep_nt.append(nt)
+        if keep_nt == []:
+            keep_nt = [None]
+        self.watson_record.ALT = keep_nt
+        self.watson_record.alleles = [self.watson_record.REF] + keep_nt
 
-        self.crick_record.samples,obs_alleles = self.call_samples(self.crick_record.samples)
-        if len(obs_alleles) > 0:
-            self.crick_record.ALT = list(obs_alleles)
-            self.crick_record.alleles = [self.crick_record.REF] + list(obs_alleles)
-        else:
-            self.crick_record.ALT = [None]
+        self.watson_record = self.call_samples(self.watson_record)
 
-        if str(self.watson_record.alleles[-1]) == '<*>':
-            self.watson_record.alleles = self.watson_record.alleles[:-1] #+ [None]
-        if str(self.crick_record.alleles[-1]) == '<*>':
-            self.crick_record.alleles = self.crick_record.alleles[:-1] #+ [None]
+        keep_nt = []
+        for pos,nt in enumerate(self.crick_record.ALT[:-1]):
+            max_pct = max([sample.data.AD[pos+1]/ float(sample.data.DP) for sample in self.crick_record.samples if sample.data.DP != 0])
+            if max_pct > 0.05:
+                keep_nt.append(nt)
+        if keep_nt == []:
+            keep_nt = [None]
+        self.crick_record.ALT = keep_nt
+        self.crick_record.alleles = [self.crick_record.REF] + keep_nt
+
+        self.crick_record= self.call_samples(self.crick_record)
+
 
 
             
@@ -692,6 +713,13 @@ class CallBase(object):
         # Determine the reference base at the position of the VCF call.
         ref_base = self.watson_record.REF
         #loop watson and crick record for combined samples.
+        if min([self.watson_record.INFO['DP'],self.crick_record.INFO['DP']]) == 0:
+            return None
+        if self.watson_record.REF not in ['C','G']:
+            watson_alt = sum(self.watson_record.INFO['AD'][1:])/float(self.watson_record.INFO['DP'])
+            crick_alt = sum(self.crick_record.INFO['AD'][1:])/float(self.crick_record.INFO['DP'])
+            if max(watson_alt,crick_alt) < 0.05:
+                return None
         self.call_genotypes()
         for watson_sample, crick_sample in izip(self.watson_record, self.crick_record):
             # If there are is no call for both the watson and crick record sample, continue as we can not determine
@@ -791,8 +819,14 @@ class CallBase(object):
                         #Can we call the SNP?
                         if alt_crick in watson_sample.site.ALT:
                             alt_index = watson_sample.site.ALT.index(alt_crick)
-                            alt_count = watson_sample.data.AO[alt_index]
-                            t_count = watson_sample.data.AO[watson_sample.site.ALT.index('T')]
+                            try:
+                                alt_count = watson_sample.data.AO[alt_index]
+                            except TypeError:
+                                alt_count = watson_sample.data.AO
+                            try:
+                                t_count = watson_sample.data.AO[watson_sample.site.ALT.index('T')]
+                            except TypeError:
+                                t_count = watson_sample.data.AO
                             if alt_count > t_count:
                                 self.processed_samples[sample_name]['snp'] = crick_sample
                                 #TODO: merge alt counts for watson and crick here
@@ -825,26 +859,25 @@ class CallBase(object):
                     #both samples have the reference allele
                     #Determine the allele count for the Alternate allele for the site
                     #If sum of alternate allele count > 0 ?? add relevant Allele to SNP output
-                    if 'AC' in watson_sample.site.INFO and 'AC' in crick_sample.site.INFO:
-                        #Only Crick contains the SNP, TODO: check if valid!
-                        if sum(crick_sample.site.INFO['AC']) == 0 and sum(watson_sample.site.INFO['AC']) > 0:
-                            self.processed_samples[sample_name]['snp'] = watson_sample
-                        #Only Watson contains the SNP, TODO: check if valid!
-                        elif sum(crick_sample.site.INFO['AC']) > 0 and sum(watson_sample.site.INFO['AC']) == 0:
-                            self.processed_samples[sample_name]['snp'] = crick_sample
-                        #Both contain the SNP, combine records, TODO: check if combination is warranted!
-                        #Both watson and crick should contain the same type of non reference allele
-                        elif sum(watson_sample.site.INFO['AC']) > 0 and sum(crick_sample.site.INFO['AC']) > 0:
-                            combined_record = combine_record_samples(watson_sample,crick_sample)
-                            self.processed_samples[sample_name]['snp'] = combined_record
-                    elif 'AC' in watson_sample.site.INFO:
-                        #Only watson contains the SNP,
-                        #TODO: assert if valid. Only true if SNP is T/C!
-                        self.processed_samples[sample_name]['snp'] = watson_sample
-                    elif 'AC' in crick_sample.site.INFO:
-                        #Only watson contains the SNP,
-                        #TODO: assert if valid. Only true if SNP is T/G!
-                        self.processed_samples[sample_name]['snp'] = crick_sample
+                    # if 'AC' in watson_sample.site.INFO and 'AC' in crick_sample.site.INFO:
+                    #     #Only Crick contains the SNP, TODO: check if valid!
+                    #     if sum(crick_sample.site.INFO['AC']) == 0 and sum(watson_sample.site.INFO['AC']) > 0:
+                    #         self.processed_samples[sample_name]['snp'] = watson_sample
+                    #     #Only Watson contains the SNP, TODO: check if valid!
+                    #     elif sum(crick_sample.site.INFO['AC']) > 0 and sum(watson_sample.site.INFO['AC']) == 0:
+                    #         self.processed_samples[sample_name]['snp'] = crick_sample
+                    #Both contain the SNP, combine records, TODO: check if combination is warranted!
+                    #Both watson and crick should contain the same type of non reference allele
+                    combined_record = combine_record_samples(watson_sample,crick_sample)
+                    self.processed_samples[sample_name]['snp'] = combined_record
+                    # elif 'AC' in watson_sample.site.INFO:
+                    #     #Only watson contains the SNP,
+                    #     #TODO: assert if valid. Only true if SNP is T/C!
+                    #     self.processed_samples[sample_name]['snp'] = watson_sample
+                    # elif 'AC' in crick_sample.site.INFO:
+                    #     #Only watson contains the SNP,
+                    #     #TODO: assert if valid. Only true if SNP is T/G!
+                    #     self.processed_samples[sample_name]['snp'] = crick_sample
                 elif alt_watson == 'A' and alt_crick == 'A':
                     #TODO: check what is causing the error in combined_record it's not writing now.
                     combined_record = combine_record_samples(watson_sample,crick_sample)
@@ -852,9 +885,13 @@ class CallBase(object):
                     self.processed_samples[sample_name]['snp'] = watson_sample
                 elif alt_watson == 'G' and alt_crick in 'GA':
                     self.processed_samples[sample_name]['snp'] = watson_sample
-                    self.processed_samples[sample_name]['methylated'] = crick_sample
+                    # self.processed_samples[sample_name]['methylated'] = crick_sample
                 elif alt_watson == 'C' and alt_crick in 'CT':
                     self.processed_samples[sample_name]['snp'] = crick_sample
+                elif 'A' in alt_watson + alt_crick and ref_base in alt_watson + alt_crick:
+                    #one of the samples
+                    combined_record = combine_record_samples(watson_sample,crick_sample)
+                    self.processed_samples[sample_name]['snp'] = combined_record
             elif ref_base == 'A':
                 if alt_watson == 'A' and alt_crick == 'A':
                     #both samples have the reference allele
@@ -889,7 +926,11 @@ class CallBase(object):
                 elif alt_watson == 'G' and alt_crick in 'GA':
                     self.processed_samples[sample_name]['snp'] = watson_sample
                     #self.processed_samples[sample_name]['methylated'] = crick_sample
-
+                elif 'T' in alt_watson + alt_crick and ref_base in alt_watson + alt_crick:
+                    #one of the samples
+                    combined_record = combine_record_samples(watson_sample,crick_sample)
+                    self.processed_samples[sample_name]['snp'] = combined_record
+        return 1
     def write_records(self):
         """
         Writes the samples that are saved in the self.processed_samples variable.
@@ -975,19 +1016,19 @@ class CallBase(object):
 
             return processed_record
         #TODO: check SNP calling here
-        # if any(sample.called for sample in snp_samples):
-        #     #Use different method here to make sure the number of ALT alleles matches if crick
-        #     #and watson are different. #TODO: determine if this method can not be used always.
-        #     snp_record = define_record_snp(snp_samples)
-        #     write_snp_file(self, snp_record)
-        #     self.snp_file.write_record(snp_record)
-        #     #snp_record_dict is purely used to determine context for CG,CHG and CHH methylation.
-        #     #It does not contain any useful information pertaining to SNPs
-        #     if self.snp_record_dict.has_key(snp_record.CHROM) == True:
-        #         self.snp_record_dict[snp_record.CHROM].append(snp_record)
-        #     else:
-        #         # self.snp_record_dict.clear()
-        #         self.snp_record_dict[snp_record.CHROM] = [snp_record]
+        if any(sample.called for sample in snp_samples):
+            #Use different method here to make sure the number of ALT alleles matches if crick
+            #and watson are different. #TODO: determine if this method can not be used always.
+            snp_record = define_record_snp(snp_samples)
+            write_snp_file(self, snp_record)
+            self.snp_file.write_record(snp_record)
+            #snp_record_dict is purely used to determine context for CG,CHG and CHH methylation.
+            #It does not contain any useful information pertaining to SNPs
+            if self.snp_record_dict.has_key(snp_record.CHROM) == True:
+                self.snp_record_dict[snp_record.CHROM].append(snp_record)
+            else:
+                # self.snp_record_dict.clear()
+                self.snp_record_dict[snp_record.CHROM] = [snp_record]
         if any(sample.called for sample in methylated_samples):
             methylation_record = define_record(self, methylated_samples)
             self.methylation_file.write_record(methylation_record)
