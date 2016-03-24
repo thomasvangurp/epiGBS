@@ -1012,7 +1012,10 @@ class CallBase(object):
             Returns a pyVCF parsable record if a list of samples is given.
             """
             # Sets a called SNP record as the parent record for a new SNP call object.
-            vcf_file = [sample for sample in samples if sample.called][0].site
+            out_sites = {}
+            for sample in samples:
+                out_sites[len(sample.site.ALT)] = sample.site
+            vcf_file = out_sites[max(out_sites.keys())]
 
             chr = vcf_file.CHROM
             pos = vcf_file.POS
