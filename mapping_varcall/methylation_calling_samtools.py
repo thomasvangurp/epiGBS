@@ -123,7 +123,7 @@ def parse_vcf(args):
             min_alt_observations = 2
             # min_quality = call_base.set_offsets(quality_offset, min_alt_observations)
             call_base.write_records()
-            if int(call_base.watson_record.CHROM) > 100:
+            if int(call_base.watson_record.CHROM) > 1000:
                 break
 
     # If there are no SNP's in the cluster/chromosome, the igv file needs to be written without a sliding window.
@@ -1015,9 +1015,12 @@ class CallBase(object):
             # Sets a called SNP record as the parent record for a new SNP call object.
             out_sites = {}
             for sample in samples:
-                out_sites[len(sample.site.ALT)] = sample.site
-            vcf_file = out_sites[max(out_sites.keys())]
-
+                if not sample.site.ALT[0] in [None,0]:
+                    out_sites[len(sample.site.ALT)] = sample.site
+            try:
+                vcf_file = out_sites[max(out_sites.keys())]
+            except ValueError:
+                vcf_file = [sample for sample in samples if sample.called][0].site
             chr = vcf_file.CHROM
             pos = vcf_file.POS
             id = vcf_file.ID
