@@ -69,8 +69,8 @@ data.source <- c("%(directory)s/bs.bed/","%(directory)s/sample.csv")
 
 # Sets the number of cores to use for the analysis.
 logger.start(fname=NA)
-num.cores <- %(cores)s
-parallel.setup(num.cores)
+#um.cores <- %(cores)s
+#parallel.setup(num.cores)
 
 # Main analysis function of RnBeads. 
 rnb.run.analysis(dir.reports=report.dir, data.source=data.source,
