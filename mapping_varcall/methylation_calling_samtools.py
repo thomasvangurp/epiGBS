@@ -105,6 +105,18 @@ def parse_vcf(args):
             #Call methylation / SNPs: method of callbase class
             #TODO: check quality parameters elsewhere
             return_code = call_base.methylation_calling()
+            #TODO: implement SNP filtering here
+            #SNPs should be checked to see if all have the same site
+            #1. Take the site with the longest and most inclusive ALT allele
+            #2. recall samples that are based on a different site, use the longest (ref) ALT locations and make new record
+            #3. Define SNP calling rules, eg a valid SNP should be seen in both watson and crick if not masked by
+            #   a DNA methytlation polymorphism. e.g. An A/T SNP should be present in both watson and crick, otherwise it
+            #   is not valid. a C/T SNP can be seen only in Crick and a G/A SNP only in watson. C/A snp should be T/A
+            #   in watson and C/A in crick. C/G SNPs should be T/G in watson and C/A in crick.
+            #3a. Furthermore, SNPs should be present in at least one sample with a (combined) count of at least 2.
+            #SNP type should be noted, e.g. for IGV and bed file output filtering only look at SNPs with a C or G allele in them.
+            #These SNPs can have an impact on methylation calls, such methylation calls should be voided.
+            # return_code = call_base.filter_snps()
             if not return_code:
                 continue
             quality_offset = args.min_quality
@@ -622,8 +634,13 @@ class CallBase(object):
                     if count / float(sample.data.DP) > 0.05:
                         out_count[str(nt)] = count
             if out_count == {}:
-                #only reference bases were found, sample is homozygous reference
-                GT = '0/0'
+                if sum(sample.data.AD) == 0:
+                    #sample is not called as the sum of all calls is 0
+                    #TODO: implement treshold here based on number of observations for valid allele call?
+                    GT = './.'
+                else:
+                    #only reference bases were found, sample is homozygous reference
+                    GT = '0/0'
             elif len(out_count) == 1:
                 #only one alternate allele found
                 alt_pos = [str(nt) for nt in record.ALT].index(out_count.keys()[0]) + 1
@@ -657,8 +674,8 @@ class CallBase(object):
                       ]
             sample.site.FORMAT = ':'.join(header)
             model = vcf.model._Call(sample.site,
-                                    sample.sample,
-                                    call_data(*values))
+                                        sample.sample,
+                                        call_data(*values))
             model.site = record
             samples_out.append(model)
         record.samples = samples_out
@@ -707,7 +724,7 @@ class CallBase(object):
         """
 
         # If the sample is methylated, the processed_samples will be filled under the methylated key, or when it's
-        # a normal SNP, it will be filled under the snp key or when it's both, under both.
+        # a normal SNP, it will be filed under the snp key or when it's both, under both.
 
         self.processed_samples = {key: {'methylated': None, 'snp': None} for key in self.watson_file.samples}
         # Determine the reference base at the position of the VCF call.
@@ -750,7 +767,7 @@ class CallBase(object):
                     self.processed_samples[sample_name]['methylated'] = watson_sample
                     try:
                         #'AC' is not present in homozygous situations.
-                        if sum(crick_sample.site.INFO['AC']) > 0:
+                        if sum(crick_sample.site.INFO['AD'][1:]) > 0:
                             #The Alternate alleles need to be called in at least one sample to be valid!
                             self.processed_samples[sample_name]['snp'] = crick_sample
                     except KeyError:
@@ -836,7 +853,7 @@ class CallBase(object):
                     self.processed_samples[sample_name]['methylated'] = crick_sample
                     try:
                         #If one or more sample has an alternate allele call it for this individual as well
-                        if sum(watson_sample.site.INFO['AC']) > 0:
+                        if sum(watson_sample.site.INFO['AD'][1:]) > 0:
                              self.processed_samples[sample_name]['snp'] = watson_sample
                     except KeyError:
                         pass
@@ -994,8 +1011,8 @@ class CallBase(object):
             """
             Returns a pyVCF parsable record if a list of samples is given.
             """
-            # Sets the record as a parent record depending on reference base.
-            vcf_file = samples[0].site
+            # Sets a called SNP record as the parent record for a new SNP call object.
+            vcf_file = [sample for sample in samples if sample.called][0].site
 
             chr = vcf_file.CHROM
             pos = vcf_file.POS
