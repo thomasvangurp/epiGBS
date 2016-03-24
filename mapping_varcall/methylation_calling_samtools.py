@@ -761,6 +761,7 @@ class CallBase(object):
             alt_crick = crick_sample.gt_bases.split('/')[1]
         
             sample_name = watson_sample.sample
+            #TODO: move SNP calling to separate algorithm.
             if ref_base == 'C':
                 if alt_crick == 'C' and alt_watson in 'CT':
                     #Methylation in watson C/T No polymorphism in Crick: methylation
