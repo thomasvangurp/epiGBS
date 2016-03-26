@@ -95,7 +95,7 @@ def parse_vcf(args):
             # qsum = sum(record.QUAL for record in records)
             # filter_records(records)
             call_base.watson_record,call_base.crick_record = records
-            #Check for sum of quality of genotype alleles
+            # Check for sum of quality of genotype alleles
             # if qsum < 30:
             #     if call_base.watson_record.REF in 'CG':
             #         #We should always check methylation variation, even if not variable!
@@ -104,32 +104,37 @@ def parse_vcf(args):
             #         continue
             #Call methylation / SNPs: method of callbase class
             #TODO: check quality parameters elsewhere
-            return_code = call_base.methylation_calling()
-            #TODO: implement SNP filtering here
-            #SNPs should be checked to see if all have the same site
-            #1. Take the site with the longest and most inclusive ALT allele
-            #2. recall samples that are based on a different site, use the longest (ref) ALT locations and make new record
-            #3. Define SNP calling rules, eg a valid SNP should be seen in both watson and crick if not masked by
-            #   a DNA methytlation polymorphism. e.g. An A/T SNP should be present in both watson and crick, otherwise it
+            #return_code = call_base.methylation_calling()
+
+            # TODO: implement SNP filtering here
+            # SNPs should be checked to see if all have the same site
+            # 1. Take the site with the longest and most inclusive ALT allele
+            # 2. recall samples that are based on a different site, use the longest (ref) ALT locations and make new record
+            # 3. Define SNP calling rules, eg a valid SNP should be seen in both watson and crick if not masked by
+            # a DNA methytlation polymorphism. e.g. An A/T SNP should be present in both watson and crick, otherwise it
             #   is not valid. a C/T SNP can be seen only in Crick and a G/A SNP only in watson. C/A snp should be T/A
             #   in watson and C/A in crick. C/G SNPs should be T/G in watson and C/A in crick.
-            #3a. Furthermore, SNPs should be present in at least one sample with a (combined) count of at least 2.
-            #SNP type should be noted, e.g. for IGV and bed file output filtering only look at SNPs with a C or G allele in them.
-            #These SNPs can have an impact on methylation calls, such methylation calls should be voided.
-            # return_code = call_base.filter_snps()
+            # 3a. Furthermore, SNPs should be present in at least one sample with a (combined) count of at least 2.
+            # SNP type should be noted, e.g. for IGV and bed file output filtering only look at SNPs with a C or G allele in them.
+            # These SNPs can have an impact on methylation calls, such methylation calls should be voided.
+            return_code = call_base.filter_snps()
+
             if not return_code:
                 continue
             quality_offset = args.min_quality
             min_alt_observations = 2
             # min_quality = call_base.set_offsets(quality_offset, min_alt_observations)
+
             call_base.write_records()
-            if int(call_base.watson_record.CHROM) > 1000:
+
+            if int(call_base.watson_record.CHROM) > 100:
                 break
 
     # If there are no SNP's in the cluster/chromosome, the igv file needs to be written without a sliding window.
-    if call_base.methylated_records:
-        for sample in call_base.methylated_records:
-            write_igv_file(call_base, sample)
+
+    #if call_base.methylated_records:
+    #    for sample in call_base.methylated_records:
+    #        write_igv_file(call_base, sample)
 
 
 def make_empty_sample(sample):
@@ -219,7 +224,6 @@ def combine_record_samples(sample1, sample2):
             return model
         except TypeError:
             return out_prim
-
 
 
 def write_igv_file(call_base, methyl_record):
@@ -567,7 +571,7 @@ class CallBase(object):
         self.min_alt_observations = min_alt_observations
         return self.qual_offset
 
-    def check_change_samtools_call(self,sample):
+    def check_change_samtools_call(self, sample):
         """Check variant calling in samtools provided sample"""
         empty_sample = make_empty_sample(sample)
         GT = None
@@ -621,7 +625,7 @@ class CallBase(object):
                                     call_data(*values))
         return model
 
-    def call_samples(self,record):
+    def call_samples(self, record):
         samples_out = []
         alleles_observed = []
         header = ['GT','DP','AD','RO','AO']
@@ -689,35 +693,34 @@ class CallBase(object):
 
     def call_genotypes(self):
         """"call genotypes for watson and crick"""
-        #determine which alt records to keep for watson
-        #only alt records that are present with more than 5% in any sample are preserved
-        keep_nt = []
-        for pos,nt in enumerate(self.watson_record.ALT[:-1]):
-            max_pct = max([sample.data.AD[pos+1]/ float(sample.data.DP) for sample in self.watson_record.samples if sample.data.DP != 0])
+        # determine which alt records to keep for watson
+        # only alt records that are present with more than 5% in any sample are preserved
+        keep_nt = list()
+        for pos, nt in enumerate(self.watson_record.ALT[:-1]):
+            max_pct = max([sample.data.AD[pos+1] / float(sample.data.DP) for sample in self.watson_record.samples if
+                           sample.data.DP != 0])
             if max_pct > 0.05:
                 keep_nt.append(nt)
-        if keep_nt == []:
+        if not keep_nt:
             keep_nt = [None]
         self.watson_record.ALT = keep_nt
         self.watson_record.alleles = [self.watson_record.REF] + keep_nt
 
         self.watson_record = self.call_samples(self.watson_record)
 
-        keep_nt = []
-        for pos,nt in enumerate(self.crick_record.ALT[:-1]):
-            max_pct = max([sample.data.AD[pos+1]/ float(sample.data.DP) for sample in self.crick_record.samples if sample.data.DP != 0])
+        keep_nt = list()
+        for pos, nt in enumerate(self.crick_record.ALT[:-1]):
+            max_pct = max([sample.data.AD[pos+1] / float(sample.data.DP) for sample in self.crick_record.samples if
+                           sample.data.DP != 0])
             if max_pct > 0.05:
                 keep_nt.append(nt)
-        if keep_nt == []:
+        if not keep_nt:
             keep_nt = [None]
         self.crick_record.ALT = keep_nt
         self.crick_record.alleles = [self.crick_record.REF] + keep_nt
 
-        self.crick_record= self.call_samples(self.crick_record)
+        self.crick_record = self.call_samples(self.crick_record)
 
-
-
-            
     def methylation_calling(self):
         """
         Main base calling algorithm. Determines methylation/SNP status for each sample having a watson and crick record.
@@ -729,13 +732,13 @@ class CallBase(object):
         self.processed_samples = {key: {'methylated': None, 'snp': None} for key in self.watson_file.samples}
         # Determine the reference base at the position of the VCF call.
         ref_base = self.watson_record.REF
-        #loop watson and crick record for combined samples.
-        if min([self.watson_record.INFO['DP'],self.crick_record.INFO['DP']]) == 0:
+        # loop watson and crick record for combined samples.
+        if min([self.watson_record.INFO['DP'], self.crick_record.INFO['DP']]) == 0:
             return None
-        if self.watson_record.REF not in ['C','G']:
+        if self.watson_record.REF not in ['C', 'G']:
             watson_alt = sum(self.watson_record.INFO['AD'][1:])/float(self.watson_record.INFO['DP'])
             crick_alt = sum(self.crick_record.INFO['AD'][1:])/float(self.crick_record.INFO['DP'])
-            if max(watson_alt,crick_alt) < 0.05:
+            if max(watson_alt, crick_alt) < 0.05:
                 return None
         self.call_genotypes()
         for watson_sample, crick_sample in izip(self.watson_record, self.crick_record):
@@ -936,7 +939,7 @@ class CallBase(object):
                         #TODO: assert if valid. Only true if SNP is A/C!
                         self.processed_samples[sample_name]['snp'] = crick_sample
                 elif alt_watson == 'T' and alt_crick == 'T':
-                    combined_record = combine_record_samples(watson_sample,crick_sample)
+                    combined_record = combine_record_samples(watson_sample, crick_sample)
                     self.processed_samples[sample_name]['snp'] = combined_record
                 elif alt_crick == 'C' and alt_watson in 'CT':
                     self.processed_samples[sample_name]['snp'] = crick_sample
@@ -946,9 +949,141 @@ class CallBase(object):
                     #self.processed_samples[sample_name]['methylated'] = crick_sample
                 elif 'T' in alt_watson + alt_crick and ref_base in alt_watson + alt_crick:
                     #one of the samples
-                    combined_record = combine_record_samples(watson_sample,crick_sample)
+                    combined_record = combine_record_samples(watson_sample, crick_sample)
                     self.processed_samples[sample_name]['snp'] = combined_record
         return 1
+
+    def filter_snps(self):
+        # Sets all the "snp" calles to None, TODO: if filter_snps is finished, this can be removed
+        self.processed_samples = {key: {'methylated': None, 'snp': None} for key in self.watson_file.samples}
+
+        # Reference, Watson and Crick record REF are both the same.
+        ref_base = self.watson_record.REF
+
+        # If one of the records contains a depth of 0: return None.
+        if min([self.watson_record.INFO['DP'], self.crick_record.INFO['DP']]) == 0:
+            return None
+
+        self.call_genotypes()
+        for watson_sample, crick_sample in izip(self.watson_record, self.crick_record):
+            # If there are is no call for both the watson and crick record sample, continue as we can not determine
+            # whether polymorphism is a SNP polymorphism.
+            if not watson_sample.called or not crick_sample.called:
+                continue
+            sample_name = watson_sample.sample
+
+            alt_list_crick = crick_sample.data.AD[1:]
+            alt_list_watson = watson_sample.data.AD[1:]
+
+            # alt_base is the allele with the highest mutation frequency.
+            # TODO: Check if Samtools is causing this: no ALT allele annotation.
+            try:
+                alt_base_crick = self.crick_record.ALT[alt_list_crick.index(max(alt_list_crick))]
+                alt_base_watson = self.watson_record.ALT[alt_list_watson.index(max(alt_list_watson))]
+            except IndexError:
+                continue
+
+            if ref_base == "C":
+                # TODO: Set this to a variable that can be parsed.
+                if max(alt_list_crick) >= 2:
+                    # C/T SNP
+                    if alt_base_crick == "T":
+                        # TODO: Check if this is actually enough evidence for for calling a C-T SNP.
+                        # If there is a C/T SNP, there need to be at least the same number of T alleles in Watson.
+                        if watson_sample.data.AD[alt_list_crick.index(max(alt_list_crick))+1] >= max(alt_list_crick):
+                            # TODO: Maybe combine with part of Watson?
+                            self.processed_samples[sample_name]["snp"] = crick_sample
+
+                    # C/A SNP
+                    if alt_base_crick == "A":
+                        # Check if it's in C/A SNP, if alt_base_watson == "G", it's a C/G SNP.
+                        if alt_list_crick == alt_base_watson:
+                            # A/A records can be combined.
+                            # TODO: Verify the combine record method for SNPs.
+                            combined_record = combine_record_samples(watson_sample, crick_sample)
+                            self.processed_samples[sample_name]['snp'] = combined_record
+
+                        # Unmethylated C/G SNP.
+                        if alt_base_watson == "G":
+                            # TODO: Maybe combine with part of Crick?
+                            self.processed_samples[sample_name]["snp"] = watson_sample
+
+                    # Methylated C/G SNP
+                    if alt_list_crick == "G":
+                        if watson_sample.data.AD[alt_list_crick.index(max(alt_list_crick))+1] >= max(alt_list_crick):
+                            self.processed_samples[sample_name]["snp"] = watson_sample
+
+
+            elif ref_base == "G":
+                alt_list_watson = crick_sample.data.AD[1:]
+                # TODO: Set this to a variable that can be parsed.
+                if max(alt_list_watson) >= 2:
+                    # G/A SNP
+                    if alt_base_watson == "A":
+                        # TODO: Check if this is actually enough evidence for for calling a G-A SNP.
+                        # If there is a G/A SNP, there need to be at least the same number of T alleles in Crick.
+                        if crick_sample.data.AD[alt_list_watson.index(max(alt_list_watson))+1] >= max(alt_list_watson):
+                            # TODO: Maybe combine with part of Watson?
+                            self.processed_samples[sample_name]["snp"] = watson_sample
+
+                    if alt_base_watson == "T":
+                        # G/T SNP
+                        if alt_base_crick == "T":
+                            # Check if it's a G/T SNP, if alt_base_crick == "G", it's a G/A SNP.
+                            if alt_list_crick == alt_base_watson:
+                                # G/T records can be combined.
+                                # TODO: Verify the combine record method for SNPs.
+                                combined_record = combine_record_samples(watson_sample, crick_sample)
+                                self.processed_samples[sample_name]['snp'] = combined_record
+
+                            # Unmethylated G/C SNP.
+                            if alt_base_crick == "C":
+                                # TODO: Maybe combine with part of Watson?
+                                self.processed_samples[sample_name]["snp"] = crick_sample
+
+                    # Methylated G/C SNP
+                    if alt_base_watson == "C":
+                        if crick_sample.data.AD[alt_list_watson.index(max(alt_list_watson))+1] >= max(alt_list_watson):
+                            self.processed_samples[sample_name]["snp"] = crick_sample
+
+            if ref_base == "A":
+                    # A/C SNP
+                    if alt_base_crick == "C":
+                        # TODO: Part of Watson also SNP evidence?
+                        self.processed_samples[sample_name]["snp"] = crick_sample
+
+                    # A/T SNP
+                    if alt_base_crick == "T" and alt_base_watson == "T":
+                        # A/T records can be combined.
+                        # TODO: Verify the combine record method for SNPs.
+                        combined_record = combine_record_samples(watson_sample, crick_sample)
+                        self.processed_samples[sample_name]['snp'] = combined_record
+
+                    # A/G SNP
+                    if alt_base_watson == "G":
+                        # TODO: Part of Crick also SNP evidence?
+                        self.processed_samples[sample_name]["snp"] = watson_sample
+
+            if ref_base == "T":
+                    # T/C SNP
+                    if alt_base_crick == "C":
+                        # TODO: Part of Watson also SNP evidence?
+                        self.processed_samples[sample_name]["snp"] = crick_sample
+
+                    # T/A SNP
+                    if alt_base_crick == "A" and alt_base_watson == "A":
+                        # T/A records can be combined.
+                        # TODO: Verify the combine record method for SNPs.
+                        combined_record = combine_record_samples(watson_sample, crick_sample)
+                        self.processed_samples[sample_name]['snp'] = combined_record
+
+                    # T/G SNP
+                    if alt_base_watson == "G":
+                        # TODO: Part of Crick also SNP evidence?
+                        self.processed_samples[sample_name]["snp"] = watson_sample
+
+        return 1
+
     def write_records(self):
         """
         Writes the samples that are saved in the self.processed_samples variable.
@@ -1064,6 +1199,7 @@ class CallBase(object):
                     write_igv_file(self, record)
                 del self.methylated_records[:-2]
                 del self.snp_record_dict[self.watson_record.CHROM][0]
+
 
 def zip_tabix(args):
     """Zip and tabix index the output files"""
