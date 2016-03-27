@@ -80,10 +80,46 @@ NULL
 
 ## Chromosomes supported by the annotation packages
 
+##
+galmoltest01.chr <- read.table("/Users/thomasvangurp/Dropbox/Thomas_NIOO/bioinformatics/epiGBS/github_repository/epiGBS/RnBeads/assemblies/galmoltest01/bs.bed/chromosomes.txt")
+##
+galmoltest01.chr <- read.table("/Users/thomasvangurp/Dropbox/Thomas_NIOO/bioinformatics/epiGBS/github_repository/epiGBS/RnBeads/assemblies/galmoltest01/bs.bed/chromosomes.txt")
+##
+galmoltest01.chr <- read.table("/Users/thomasvangurp/Dropbox/Thomas_NIOO/bioinformatics/epiGBS/github_repository/epiGBS/RnBeads/assemblies/galmoltest01/bs.bed/chromosomes.txt")
+##
+galmoltest01.chr <- read.table("/Users/thomasvangurp/Dropbox/Thomas_NIOO/bioinformatics/epiGBS/github_repository/epiGBS/RnBeads/assemblies/galmoltest01/bs.bed/chromosomes.txt")
+##
+galmoltest01.chr <- read.table("/Users/thomasvangurp/Dropbox/Thomas_NIOO/bioinformatics/epiGBS/github_repository/epiGBS/RnBeads/assemblies/galmoltest01/bs.bed/chromosomes.txt")
+##
+galmoltest01.chr <- read.table("/Users/thomasvangurp/Dropbox/Thomas_NIOO/bioinformatics/epiGBS/github_repository/epiGBS/RnBeads/assemblies/galmoltest01/bs.bed/chromosomes.txt")
+##
+galmoltest01.chr <- read.table("/Users/thomasvangurp/Dropbox/Thomas_NIOO/bioinformatics/epiGBS/github_repository/epiGBS/RnBeads/assemblies/galmoltest01/bs.bed/chromosomes.txt")
+##
+galmoltest01.chr <- read.table("/Users/thomasvangurp/Dropbox/Thomas_NIOO/bioinformatics/epiGBS/github_repository/epiGBS/RnBeads/assemblies/galmoltest01/bs.bed/chromosomes.txt")
+##
+vercha0.1.chr <- read.table("/Users/thomasvangurp/Dropbox/Thomas_NIOO/bioinformatics/epiGBS/github_repository/epiGBS/RnBeads/assemblies/vercha0.1/bs.bed/chromosomes.txt")
 ##%(chromosomes)s
 CHROMOSOMES.L2S <- list("hg19" = c(1:22, "X", "Y"), "mm9" = c(1:19, "X", "Y"), "mm10" = c(1:19, "X", "Y"),
 	"rn5" = c(1:20, "X")
 
+##
+,'galmoltest01' = galmoltest01.chr[[1]]
+##
+,'galmoltest01' = galmoltest01.chr[[1]]
+##
+,'galmoltest01' = galmoltest01.chr[[1]]
+##
+,'galmoltest01' = galmoltest01.chr[[1]]
+##
+,'galmoltest01' = galmoltest01.chr[[1]]
+##
+,'galmoltest01' = galmoltest01.chr[[1]]
+##
+,'galmoltest01' = galmoltest01.chr[[1]]
+##
+,'galmoltest01' = galmoltest01.chr[[1]]
+##
+,'vercha0.1' = vercha0.1.chr[[1]]
 ##%(assembly_table)s
 	)
 CHROMOSOMES.S2L <- lapply(CHROMOSOMES.L2S, function(x) { paste0("chr", x) })
@@ -184,6 +220,51 @@ get.genome.data <- function(assembly) {
   }
 ##
 
+##
+else if (assembly == 'galmoltest01') {
+suppressPackageStartupMessages(require(BSgenome.mollumGallium.NIOO.v0.1))
+genome.data <- mollum
+}
+##
+else if (assembly == 'galmoltest01') {
+suppressPackageStartupMessages(require(BSgenome.mollumGallium.NIOO.v0.1))
+genome.data <- mollum
+}
+##
+else if (assembly == 'galmoltest01') {
+suppressPackageStartupMessages(require(BSgenome.mollumGallium.NIOO.v0.1))
+genome.data <- mollum
+}
+##
+else if (assembly == 'galmoltest01') {
+suppressPackageStartupMessages(require(BSgenome.mollumGallium.NIOO.v0.1))
+genome.data <- mollum
+}
+##
+else if (assembly == 'galmoltest01') {
+suppressPackageStartupMessages(require(BSgenome.mollumGallium.NIOO.v0.1))
+genome.data <- mollum
+}
+##
+else if (assembly == 'galmoltest01') {
+suppressPackageStartupMessages(require(BSgenome.mollumGallium.NIOO.v0.1))
+genome.data <- mollum
+}
+##
+else if (assembly == 'galmoltest01') {
+suppressPackageStartupMessages(require(BSgenome.mollumGallium.NIOO.v0.1))
+genome.data <- mollum
+}
+##
+else if (assembly == 'galmoltest01') {
+suppressPackageStartupMessages(require(BSgenome.mollumGallium.NIOO.v0.1))
+genome.data <- mollum
+}
+##
+else if (assembly == 'vercha0.1') {
+suppressPackageStartupMessages(require(BSgenome.Veronicachamaedrys.NIOO.v0.1))
+genome.data <- Veronica
+}
 ##%(assembly_package)s
   else {
     stop("unsupported assembly")
