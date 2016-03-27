@@ -638,16 +638,20 @@ class CallBase(object):
                         #Get minimum count for both forward and reverse mapped reads
                         min_count = float(min([sample.data.ADF[pos + 1], sample.data.ADR[pos + 1]]))
                         #if this count is 0 or lower than 5%, do not take the allele into account.
-                        try:
-                            if min_count / min([sum(sample.data.ADF), sum(sample.data.ADR)]) < 0.05:
-                                continue
-                        except ZeroDivisionError:
+                        min_strand_cover = min([sum(sample.data.ADF), sum(sample.data.ADR)])
+                        #min cover of one of the strands is too low. take total
+                        if min_strand_cover < 10:
+                            #not enough data on one strand, use both
+                            #TODO: check if this could be done differently!
+                            if count / float(sample.data.DP) > 0.05:
+                                out_count[str(nt)] = count
                             continue
-                        else:
-                            pass
-                    #method for when no forward or reverse allelic depth is known.
-                    if count / float(sample.data.DP) > 0.05:
-                        out_count[str(nt)] = count
+                        if min_count / min_strand_cover > 0.05:
+                            out_count[str(nt)] = count
+                    else:
+                        #method for when no forward or reverse allelic depth is known.
+                        if count / float(sample.data.DP) > 0.05:
+                            out_count[str(nt)] = count
             if out_count == {}:
                 if sum(sample.data.AD) == 0:
                     #sample is not called as the sum of all calls is 0
@@ -661,7 +665,23 @@ class CallBase(object):
                 alt_pos = [str(nt) for nt in record.ALT].index(out_count.keys()[0]) + 1
                 if sample.data.AD[0] / float(sample.data.DP) > 0.05:
                     #reference allele is present more than 5%
-                    GT = '0/%s'%alt_pos
+                    if 'ADFR' not in sample.data._fields:
+                        GT = '0/%s'%alt_pos
+                    else:
+                        #Check if reference allele is indeed observed in both forward and reverse mapping reads
+                        GT = []
+                        for i in [0,1]:
+
+                            try:
+                                if min([float(sample.data.ADF[i])/sum(sample.data.ADF),
+                                        float(sample.data.ADR[i])/sum(sample.data.ADR)]) > 0.05:
+                                    GT.append(str(i))
+                            except ZeroDivisionError:
+                                pass
+                        if GT == []:
+                            GT = './.'
+                        else:
+                            GT = '%s/%s'%(GT[0],GT[-1])
                 else:
                     #only alternate allele is present
                     GT = '%s/%s'%(alt_pos,alt_pos)
