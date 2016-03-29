@@ -89,6 +89,7 @@ def parse_vcf(args):
                          snp_file, igv_file, methyl_called_file, snp_called_file)
     #use vcf.utils.walk_together
     combined_records = vcf.utils.walk_together(watson_file,crick_file)
+
     for records in combined_records:
         if None not in records:
             #both records need to be present and valid
@@ -125,8 +126,8 @@ def parse_vcf(args):
 
             call_base.write_records()
 
-            if int(call_base.watson_record.CHROM) > 100:
-                break
+            # if int(call_base.watson_record.CHROM) > 100:
+            #     break
 
             # If there are no SNP's in the cluster/chromosome, the igv file needs to be written without a sliding window.
 
@@ -634,7 +635,7 @@ class CallBase(object):
                 count = sample.data.AD[pos+1]
                 if count:
                     #ADF is Allelic Depth on forward strand
-                    if 'ADF' in sample.data._fields:
+                    if 'ADFR' in sample.data._fields:
                         #Get minimum count for both forward and reverse mapped reads
                         min_count = float(min([sample.data.ADF[pos + 1], sample.data.ADR[pos + 1]]))
                         #if this count is 0 or lower than 5%, do not take the allele into account.
@@ -700,7 +701,7 @@ class CallBase(object):
                             alt_pos = [str(v) for v in record.ALT].index(str(nt)) + 1
                             GT.append(str(alt_pos))
                 GT = '/'.join(GT)
-            if 'ADF' in sample.data._fields and min([sum(sample.data.ADF),sum(sample.data.ADR)]) > 10:
+            if 'ADFR' in sample.data._fields and min([sum(sample.data.ADF),sum(sample.data.ADR)]) > 10:
                 AD = []
                 for obs_fw,obs_rev in zip(sample.data.ADF,sample.data.ADR):
                     try:
@@ -716,12 +717,13 @@ class CallBase(object):
                     else:
                         AD.append(0)
                 AO = [count for (count,allele) in zip(AD[1:-1],sample.site.ALT) if allele in record.ALT]
-            elif 'ADF' in sample.data._fields:
+            elif 'ADFR' in sample.data._fields:
                 AD = sample.data.AD
                 AO = AD[1:]
                 AO = [count for (count,allele) in zip(AD[1:-1],sample.site.ALT) if allele in record.ALT]
             else:
                 AO = [count for (count,allele) in zip(sample.data.AD[1:-1],sample.site.ALT) if allele in record.ALT]
+                AD = sample.data.AD
             if AO == []:
                 AO = None
             values = [GT,
