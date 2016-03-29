@@ -89,6 +89,7 @@ def parse_vcf(args):
                          snp_file, igv_file, methyl_called_file, snp_called_file)
     #use vcf.utils.walk_together
     combined_records = vcf.utils.walk_together(watson_file,crick_file)
+
     for records in combined_records:
         if None not in records:
             #both records need to be present and valid
@@ -104,8 +105,9 @@ def parse_vcf(args):
             #         continue
             #Call methylation / SNPs: method of callbase class
             #TODO: check quality parameters elsewhere
-            #return_code = call_base.methylation_calling()
-
+            return_code = call_base.methylation_calling()
+            if not return_code:
+                continue
             # TODO: implement SNP filtering here
             # SNPs should be checked to see if all have the same site
             # 1. Take the site with the longest and most inclusive ALT allele
@@ -117,10 +119,7 @@ def parse_vcf(args):
             # 3a. Furthermore, SNPs should be present in at least one sample with a (combined) count of at least 2.
             # SNP type should be noted, e.g. for IGV and bed file output filtering only look at SNPs with a C or G allele in them.
             # These SNPs can have an impact on methylation calls, such methylation calls should be voided.
-            return_code = call_base.filter_snps()
-
-            if not return_code:
-                continue
+            # return_code = call_base.filter_snps()
             quality_offset = args.min_quality
             min_alt_observations = 2
             # min_quality = call_base.set_offsets(quality_offset, min_alt_observations)
@@ -129,12 +128,11 @@ def parse_vcf(args):
 
             if int(call_base.watson_record.CHROM) > 2:
                 break
+            # If there are no SNP's in the cluster/chromosome, the igv file needs to be written without a sliding window.
 
-    # If there are no SNP's in the cluster/chromosome, the igv file needs to be written without a sliding window.
-
-    #if call_base.methylated_records:
-    #    for sample in call_base.methylated_records:
-    #        write_igv_file(call_base, sample)
+    if call_base.methylated_records:
+       for sample in call_base.methylated_records:
+           write_igv_file(call_base, sample)
 
 
 def make_empty_sample(sample):
@@ -635,8 +633,25 @@ class CallBase(object):
             for pos,nt in enumerate(record.ALT):
                 count = sample.data.AD[pos+1]
                 if count:
-                    if count / float(sample.data.DP) > 0.05:
-                        out_count[str(nt)] = count
+                    #ADF is Allelic Depth on forward strand
+                    if 'ADFR' in sample.data._fields:
+                        #Get minimum count for both forward and reverse mapped reads
+                        min_count = float(min([sample.data.ADF[pos + 1], sample.data.ADR[pos + 1]]))
+                        #if this count is 0 or lower than 5%, do not take the allele into account.
+                        min_strand_cover = min([sum(sample.data.ADF), sum(sample.data.ADR)])
+                        #min cover of one of the strands is too low. take total
+                        if min_strand_cover < 10:
+                            #not enough data on one strand, use both
+                            #TODO: check if this could be done differently!
+                            if count / float(sample.data.DP) > 0.05:
+                                out_count[str(nt)] = count
+                            continue
+                        if min_count / min_strand_cover > 0.05:
+                            out_count[str(nt)] = count
+                    else:
+                        #method for when no forward or reverse allelic depth is known.
+                        if count / float(sample.data.DP) > 0.05:
+                            out_count[str(nt)] = count
             if out_count == {}:
                 if sum(sample.data.AD) == 0:
                     #sample is not called as the sum of all calls is 0
@@ -649,8 +664,26 @@ class CallBase(object):
                 #only one alternate allele found
                 alt_pos = [str(nt) for nt in record.ALT].index(out_count.keys()[0]) + 1
                 if sample.data.AD[0] / float(sample.data.DP) > 0.05:
-                    GT = '0/%s'%alt_pos
+                    #reference allele is present more than 5%
+                    if 'ADFR' not in sample.data._fields:
+                        GT = '0/%s'%alt_pos
+                    else:
+                        #Check if reference allele is indeed observed in both forward and reverse mapping reads
+                        GT = []
+                        for i in [0,1]:
+
+                            try:
+                                if min([float(sample.data.ADF[i])/sum(sample.data.ADF),
+                                        float(sample.data.ADR[i])/sum(sample.data.ADR)]) > 0.05:
+                                    GT.append(str(i))
+                            except ZeroDivisionError:
+                                pass
+                        if GT == []:
+                            GT = './.'
+                        else:
+                            GT = '%s/%s'%(GT[0],GT[-1])
                 else:
+                    #only alternate allele is present
                     GT = '%s/%s'%(alt_pos,alt_pos)
             else:
                 if sample.data.AD[0] / float(sample.data.DP) > 0.05:
@@ -667,13 +700,35 @@ class CallBase(object):
                             alt_pos = [str(v) for v in record.ALT].index(str(nt)) + 1
                             GT.append(str(alt_pos))
                 GT = '/'.join(GT)
-            AO = [count for (count,allele) in zip(sample.data.AD[1:-1],sample.site.ALT) if allele in record.ALT]
+            if 'ADFR' in sample.data._fields and min([sum(sample.data.ADF),sum(sample.data.ADR)]) > 10:
+                AD = []
+                for obs_fw,obs_rev in zip(sample.data.ADF,sample.data.ADR):
+                    try:
+                        fw_ratio =  obs_fw / float(sum(sample.data.ADF))
+                    except ZeroDivisionError:
+                        fw_ratio  = 0
+                    try:
+                        rev_ratio = obs_rev / float(sum(sample.data.ADR))
+                    except ZeroDivisionError:
+                        rev_ratio = 0
+                    if min([fw_ratio,rev_ratio]) > 0.05:
+                        AD.append(obs_fw + obs_rev)
+                    else:
+                        AD.append(0)
+                AO = [count for (count,allele) in zip(AD[1:-1],sample.site.ALT) if allele in record.ALT]
+            elif 'ADFR' in sample.data._fields:
+                AD = sample.data.AD
+                AO = AD[1:]
+                AO = [count for (count,allele) in zip(AD[1:-1],sample.site.ALT) if allele in record.ALT]
+            else:
+                AO = [count for (count,allele) in zip(sample.data.AD[1:-1],sample.site.ALT) if allele in record.ALT]
+                AD = sample.data.AD
             if AO == []:
                 AO = None
             values = [GT,
                       sample.data.DP,
                       sample.data.AD,
-                      sample.data.AD[0],
+                      AD[0],
                       AO
                       ]
             sample.site.FORMAT = ':'.join(header)
@@ -956,6 +1011,11 @@ class CallBase(object):
     def filter_snps(self):
         # Sets all the "snp" calles to None, TODO: if filter_snps is finished, this can be removed
         self.processed_samples = {key: {'methylated': None, 'snp': None} for key in self.watson_file.samples}
+        # Sets all the "snp" calles to None
+
+        #for sample_name in self.processed_samples:
+        #    self.processed_samples[sample_name]['snp'] = None
+
         # Reference, Watson and Crick record REF are both the same.
         ref_base = self.watson_record.REF
 
