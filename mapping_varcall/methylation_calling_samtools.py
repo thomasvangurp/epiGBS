@@ -127,7 +127,7 @@ def parse_vcf(args):
 
             call_base.write_records()
 
-            if int(call_base.watson_record.CHROM) > 100:
+            if int(call_base.watson_record.CHROM) > 2:
                 break
 
     # If there are no SNP's in the cluster/chromosome, the igv file needs to be written without a sliding window.
@@ -956,7 +956,6 @@ class CallBase(object):
     def filter_snps(self):
         # Sets all the "snp" calles to None, TODO: if filter_snps is finished, this can be removed
         self.processed_samples = {key: {'methylated': None, 'snp': None} for key in self.watson_file.samples}
-
         # Reference, Watson and Crick record REF are both the same.
         ref_base = self.watson_record.REF
 
@@ -966,8 +965,8 @@ class CallBase(object):
 
         self.call_genotypes()
         for watson_sample, crick_sample in izip(self.watson_record, self.crick_record):
-            # If there are is no call for both the watson and crick record sample, continue as we can not determine
-            # whether polymorphism is a SNP polymorphism.
+            # If there is no call for both the watson and crick record sample, continue as we can not determine
+            # whether the polymorphism is a SNP polymorphism.
             if not watson_sample.called or not crick_sample.called:
                 continue
             sample_name = watson_sample.sample
@@ -1047,40 +1046,44 @@ class CallBase(object):
                             self.processed_samples[sample_name]["snp"] = crick_sample
 
             if ref_base == "A":
-                    # A/C SNP
-                    if alt_base_crick == "C":
-                        # TODO: Part of Watson also SNP evidence?
-                        self.processed_samples[sample_name]["snp"] = crick_sample
+                    if max(alt_list_crick) >= 2:
+                        # A/C SNP
+                        if alt_base_crick == "C":
+                            # TODO: Part of Watson also SNP evidence?
+                            self.processed_samples[sample_name]["snp"] = crick_sample
 
-                    # A/T SNP
-                    if alt_base_crick == "T" and alt_base_watson == "T":
-                        # A/T records can be combined.
-                        # TODO: Verify the combine record method for SNPs.
-                        combined_record = combine_record_samples(watson_sample, crick_sample)
-                        self.processed_samples[sample_name]['snp'] = combined_record
+                        # A/T SNP
+                        if alt_base_crick == "T" and alt_base_watson == "T":
+                            # A/T records can be combined.
+                            # TODO: Verify the combine record method for SNPs.
+                            combined_record = combine_record_samples(watson_sample, crick_sample)
+                            self.processed_samples[sample_name]['snp'] = combined_record
 
-                    # A/G SNP
-                    if alt_base_watson == "G":
-                        # TODO: Part of Crick also SNP evidence?
-                        self.processed_samples[sample_name]["snp"] = watson_sample
+                    if max(alt_list_watson) >= 2:
+                        # A/G SNP
+                        if alt_base_watson == "G":
+                            # TODO: Part of Crick also SNP evidence?
+                            self.processed_samples[sample_name]["snp"] = watson_sample
 
             if ref_base == "T":
-                    # T/C SNP
-                    if alt_base_crick == "C":
-                        # TODO: Part of Watson also SNP evidence?
-                        self.processed_samples[sample_name]["snp"] = crick_sample
+                    if max(alt_list_crick) >= 2:
+                        # T/C SNP
+                        if alt_base_crick == "C":
+                            # TODO: Part of Watson also SNP evidence?
+                            self.processed_samples[sample_name]["snp"] = crick_sample
 
-                    # T/A SNP
-                    if alt_base_crick == "A" and alt_base_watson == "A":
-                        # T/A records can be combined.
-                        # TODO: Verify the combine record method for SNPs.
-                        combined_record = combine_record_samples(watson_sample, crick_sample)
-                        self.processed_samples[sample_name]['snp'] = combined_record
+                        # T/A SNP
+                        if alt_base_crick == "A" and alt_base_watson == "A":
+                            # T/A records can be combined.
+                            # TODO: Verify the combine record method for SNPs.
+                            combined_record = combine_record_samples(watson_sample, crick_sample)
+                            self.processed_samples[sample_name]['snp'] = combined_record
 
-                    # T/G SNP
-                    if alt_base_watson == "G":
-                        # TODO: Part of Crick also SNP evidence?
-                        self.processed_samples[sample_name]["snp"] = watson_sample
+                    if max(alt_list_watson) >= 2:
+                        # T/G SNP
+                        if alt_base_watson == "G":
+                            # TODO: Part of Crick also SNP evidence?
+                            self.processed_samples[sample_name]["snp"] = watson_sample
 
         return 1
 
