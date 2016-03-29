@@ -105,9 +105,7 @@ def parse_vcf(args):
             #         continue
             #Call methylation / SNPs: method of callbase class
             #TODO: check quality parameters elsewhere
-            return_code = call_base.methylation_calling()
-            if not return_code:
-                continue
+            #return_code = call_base.methylation_calling()
             # TODO: implement SNP filtering here
             # SNPs should be checked to see if all have the same site
             # 1. Take the site with the longest and most inclusive ALT allele
@@ -115,14 +113,17 @@ def parse_vcf(args):
             # 3. Define SNP calling rules, eg a valid SNP should be seen in both watson and crick if not masked by
             # a DNA methytlation polymorphism. e.g. An A/T SNP should be present in both watson and crick, otherwise it
             #   is not valid. a C/T SNP can be seen only in Crick and a G/A SNP only in watson. C/A snp should be T/A
-            #   in watson and C/A in crick. C/G SNPs should be T/G in watson and C/A in crick.
+            #   in watson and C/A in cick. C/G SNPs should be T/G in watson and C/A in crick.
             # 3a. Furthermore, SNPs should be present in at least one sample with a (combined) count of at least 2.
             # SNP type should be noted, e.g. for IGV and bed file output filtering only look at SNPs with a C or G allele in them.
             # These SNPs can have an impact on methylation calls, such methylation calls should be voided.
-            # return_code = call_base.filter_snps()
+            return_code = call_base.filter_snps()
             quality_offset = args.min_quality
             min_alt_observations = 2
             # min_quality = call_base.set_offsets(quality_offset, min_alt_observations)
+
+            if not return_code:
+                continue
 
             call_base.write_records()
 
@@ -1074,7 +1075,6 @@ class CallBase(object):
 
 
             elif ref_base == "G":
-                alt_list_watson = crick_sample.data.AD[1:]
                 # TODO: Set this to a variable that can be parsed.
                 if max(alt_list_watson) >= 2:
                     # G/A SNP
