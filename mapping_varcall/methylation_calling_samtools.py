@@ -1036,7 +1036,7 @@ class CallBase(object):
                 except ValueError:
                     crick_index_T = None
                 #We can only add all C and T watson observations if there is no evidence of a C/T SNP in Crick
-                if not crick_index_T or crick_record.data[crick_index_T] / float(crick_record.data.DP) < 0.05:
+                if crick_index_T == None or crick_record.data.AO[crick_index_T] / float(crick_record.data.DP) < 0.05:
                     #all T and C counts for the watson allele are stored as
                     # C observations as no evidence of a T alt allele is present on Crick
                     try:
@@ -1052,16 +1052,30 @@ class CallBase(object):
                     watson_index_A = [str(r) for r in watson_record.site.ALT].index('A')
                 except ValueError:
                     watson_index_A = None
-                if not watson_index_A or watson_record.data[watson_index_A] / float(watson_record.data.DP) < 0.05:
+                if watson_index_A == None or watson_record.data.AO[watson_index_A] / float(watson_record.data.DP) < 0.05:
                     #all A counts for the watson allele are stored as G observations
                     try:
                         alt_index = [str(r) for r in crick_record.site.ALT].index('A')
                         nt_counts['G'] += crick_record.data.AO[alt_index]
                     except ValueError:
                         pass
+            if ref_base == 'A':
+                #Add watson record reference observations as these are never disputed.
+                nt_counts['A'] += watson_record.data.RO
+                if 'G' not in [str(r) for r in watson_record.site.ALT]:
+                    nt_counts['A'] += crick_record.data.RO
+
+            if ref_base == 'T':
+                #Add watson record reference observations as these are never disputed.
+                nt_counts['T'] += crick_record.data.RO
+                if 'C' not in [str(r) for r in crick_record.site.ALT]:
+                    nt_counts['T'] += watson_record.data.RO
+
+            alt_records = [str(r) for c,r in zip(watson_record.data.AO,watson_record.site.ALT) if c > 0]
+            alt_records += [str(r) for c,r in zip(crick_record.data.AO,crick_record.site.ALT) if c > 0]
             for nt in convert_dict['watson'].keys():
                 #only process records that exist in either the watson or crick alt site
-                if nt not in [str(r) for r in watson_record.site.ALT + crick_record.site.ALT]:
+                if nt not in alt_records:
                     continue
                 try:
                     watson_alt_index = [str(r) for r in watson_record.site.ALT].index(nt)
@@ -1140,7 +1154,7 @@ class CallBase(object):
                             raise FloatingPointError("Seen wrong nucleotide when assuming T")
                     else:
                         pass
-        print ''
+        return nt_counts
 
             #TODO: make GT record
 
