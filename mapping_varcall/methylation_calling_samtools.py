@@ -1031,8 +1031,12 @@ class CallBase(object):
                 nt_counts['C'] += crick_record.data.RO
                 #Methylated C's are evidence of C. This will create an inbalance in the allele count as T's in watson cannot be taken into accoun
                 nt_counts['C'] += watson_record.data.RO
+                try:
+                    crick_index_T = [str(r) for r in crick_record.site.ALT].index('T')
+                except ValueError:
+                    crick_index_T = None
                 #We can only add all C and T watson observations if there is no evidence of a C/T SNP in Crick
-                if 'T' not in [str(r) for r in crick_record.site.ALT]:
+                if not crick_index_T or crick_record.data[crick_index_T] / float(crick_record.data.DP) < 0.05:
                     #all T and C counts for the watson allele are stored as
                     # C observations as no evidence of a T alt allele is present on Crick
                     try:
@@ -1044,7 +1048,11 @@ class CallBase(object):
                 #Add watson record reference observations as these are never disputed.
                 nt_counts['G'] += watson_record.data.RO
                 nt_counts['G'] += crick_record.data.RO
-                if 'A' not in [str(r) for r in watson_record.site.ALT]:
+                try:
+                    watson_index_A = [str(r) for r in watson_record.site.ALT].index('A')
+                except ValueError:
+                    watson_index_A = None
+                if not watson_index_A or watson_record.data[watson_index_A] / float(watson_record.data.DP) < 0.05:
                     #all A counts for the watson allele are stored as G observations
                     try:
                         alt_index = [str(r) for r in crick_record.site.ALT].index('A')
@@ -1132,11 +1140,8 @@ class CallBase(object):
                             raise FloatingPointError("Seen wrong nucleotide when assuming T")
                     else:
                         pass
+        print ''
 
-                else:
-                    #Allele cannot be found in watson, proceed with crick
-                    print ''
-                    pass
             #TODO: make GT record
 
         #     header = watson_record.site.FORMAT
@@ -1210,6 +1215,7 @@ class CallBase(object):
                 convert_dict = {'watson':{'C':'NU','T':'CU','G':'NU'},
                                 'crick' :{'C':'NU','T':'NU','G':'NA'}}
             else:
+                #TODO: check if we cannot do some basecalling here.
                 continue
             combined_record = self.combine_snp_record(watson_sample,crick_sample,convert_dict)
             return None
