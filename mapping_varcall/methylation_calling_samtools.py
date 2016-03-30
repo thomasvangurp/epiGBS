@@ -1071,8 +1071,10 @@ class CallBase(object):
                 if 'C' not in [str(r) for r in crick_record.site.ALT]:
                     nt_counts['T'] += watson_record.data.RO
 
-            alt_records = [str(r) for c,r in zip(watson_record.data.AO,watson_record.site.ALT) if c > 0]
-            alt_records += [str(r) for c,r in zip(crick_record.data.AO,crick_record.site.ALT) if c > 0]
+            if type(watson_record.data.AO) == type([]):
+                alt_records = [str(r) for c,r in zip(watson_record.data.AO,watson_record.site.ALT) if c > 0]
+            if type(crick_record.data.AO) == type([]):
+                alt_records += [str(r) for c,r in zip(crick_record.data.AO,crick_record.site.ALT) if c > 0]
             for nt in convert_dict['watson'].keys():
                 #only process records that exist in either the watson or crick alt site
                 if nt not in alt_records:
