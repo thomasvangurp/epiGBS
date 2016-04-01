@@ -117,8 +117,7 @@ def parse_vcf(args):
             # 3a. Furthermore, SNPs should be present in at least one sample with a (combined) count of at least 2.
             # SNP type should be noted, e.g. for IGV and bed file output filtering only look at SNPs with a C or G allele in them.
             # These SNPs can have an impact on methylation calls, such methylation calls should be voided.
-            return_code = call_base.filter_snps()
-            continue
+            # return_code = call_base.filter_snps()IG
             quality_offset = args.min_quality
             min_alt_observations = 2
             # min_quality = call_base.set_offsets(quality_offset, min_alt_observations)
@@ -128,8 +127,7 @@ def parse_vcf(args):
 
             call_base.write_records()
 
-            if int(call_base.watson_record.CHROM) > 2:
-                break
+
             # If there are no SNP's in the cluster/chromosome, the igv file needs to be written without a sliding window.
 
     if call_base.methylated_records:
