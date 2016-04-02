@@ -1,6 +1,6 @@
-Package: RnBeads.vercha0.1
-Title: RnBeads.vercha0.1
-Description: Annotation tables and mappings for vercha0.1 used by RnBeads
+Package: RnBeads.galmoltest03
+Title: RnBeads.galmoltest03
+Description: Annotation tables and mappings for galmoltest03 used by RnBeads
 Authors@R: c(
     person("Yassen", "Assenov", email = "yassen@mpi-inf.mpg.de",
     role = c("aut")),
@@ -11,7 +11,7 @@ Authors@R: c(
 Date: 2013-01-27
 Version: 0.99.0
 Depends: R (>= 2.15), GenomicRanges
-Suggests: RnBeads (>= 0.99.0), BSgenome.Veronicachamaedrys.NIOO.v0.1,
+Suggests: RnBeads (>= 0.99.0), BSgenome.mollumGallium.NIOO.v0.2,
 License: GPL-3
 Collate: 'package.R'
 Packaged: 2014-01-27 07:56:08 UTC; fmueller
