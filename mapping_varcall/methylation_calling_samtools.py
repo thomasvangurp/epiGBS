@@ -133,7 +133,7 @@ def parse_vcf(args):
 
             call_base.write_records()
 
-            if int(call_base.watson_record.CHROM) > 5:
+            if int(call_base.watson_record.CHROM) > 1000:
                 break
 
             #TODO If there are no SNP's in the cluster/chromosome, the igv file needs to be written without a sliding window.
@@ -1310,7 +1310,6 @@ class CallBase(object):
                     sample, tuple([None]*len(site_obj.FORMAT.split(':'))))
                     samples_out.append(empty_model)
                     continue
-                #try:
                 allele_count = self.processed_samples[sample]["snp"][0]
                 AO = []
                 try:
@@ -1352,10 +1351,6 @@ class CallBase(object):
                                     sample,
                                     call_data(*values))
                 samples_out.append(model)
-                #except TypeError:
-                    #print "Print bad genotype"
-                    #make empty record
-                    #pass
 
             # Sets a called SNP record as the parent record for a new SNP call object.
             out_sites = dict()
