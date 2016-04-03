@@ -92,24 +92,25 @@ def parse_vcf(args):
                          snp_file, igv_file, methyl_called_file, snp_called_file)
     #use vcf.utils.walk_together
     combined_records = vcf.utils.walk_together(watson_file,crick_file)
-
+    old_chrom = None
     for records in combined_records:
         if None not in records:
             #both records need to be present and valid
             # qsum = sum(record.QUAL for record in records)
             # filter_records(records)
             call_base.watson_record,call_base.crick_record = records
-            # Check for sum of quality of genotype alleles
-            # if qsum < 30:
-            #     if call_base.watson_record.REF in 'CG':
-            #         #We should always check methylation variation, even if not variable!
-            #         pass
-            #     else:
-            #         continue
+
+            #process IGV records when done with CHROM
+            if records[0].CHROM != old_chrom:
+               for site in call_base.methylated_records:
+                   write_igv_file(call_base, site)
+               call_base.methylated_records = []
+
             #Call methylation / SNPs: method of callbase class
             #TODO: check quality parameters elsewhere
             return_code = call_base.methylation_calling()
-
+            if not return_code:
+                continue
             # TODO: implement SNP filtering here
             # SNPs should be checked to see if all have the same site
             # 1. Take the site with the longest and most inclusive ALT allele
@@ -124,8 +125,8 @@ def parse_vcf(args):
 
             return_code = call_base.filter_snps()
             #continue
-            quality_offset = args.min_quality
-            min_alt_observations = 2
+            # quality_offset = args.min_quality
+            # min_alt_observations = 2
             # min_quality = call_base.set_offsets(quality_offset, min_alt_observations)
 
             if not return_code:
@@ -133,14 +134,12 @@ def parse_vcf(args):
 
             call_base.write_records()
 
-            if int(call_base.watson_record.CHROM) > 1000:
-                break
+            # if int(call_base.watson_record.CHROM) > 1000:
+            #     break
 
             #TODO If there are no SNP's in the cluster/chromosome, the igv file needs to be written without a sliding window.
+            old_chrom = records[0].CHROM
 
-    if call_base.methylated_records:
-       for sample in call_base.methylated_records:
-           write_igv_file(call_base, sample)
 
 
 def make_empty_sample(sample):
@@ -1324,7 +1323,9 @@ class CallBase(object):
                         AO.append(0)
                 DP = sum(allele_count.values())
                 #call GT
-                if RO == DP:
+                if DP == 0:
+                    GT = "./."
+                elif RO == DP:
                     GT = "0/0"
                 elif RO > max(AO):
                     if len(AO) == 1:
