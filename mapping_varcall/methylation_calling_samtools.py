@@ -109,6 +109,7 @@ def parse_vcf(args):
             #Call methylation / SNPs: method of callbase class
             #TODO: check quality parameters elsewhere
             if call_base.watson_record.REF in ['C', 'G']:
+                #TODO: methylation call records should only contain C/T or G/A
                 return_code = call_base.methylation_calling()
                 if not return_code:
                     continue
@@ -118,7 +119,8 @@ def parse_vcf(args):
                 continue
 
             call_base.write_records()
-
+            call_base.processed_samples = {key: {'methylated': None,'snp': None}
+                                           for key in call_base.watson_file.samples}
             # if int(call_base.watson_record.CHROM) > 1000:
             #     break
 
@@ -1012,9 +1014,11 @@ class CallBase(object):
             nt_counts = {'C': 0, 'T': 0, 'G': 0, 'A': 0}
             alt_records_watson, alt_records_crick = ([], [])
             if type(watson_record.data.AO) == type([]):
-                alt_records_watson += [str(r) for c, r in zip(watson_record.data.AO,watson_record.site.ALT) if c > 0]
+                alt_records_watson += [str(r) for c, r in zip(watson_record.data.AO,watson_record.site.ALT)
+                                       if float(c)/watson_record.data.DP > 0.05 and c > 0]
             if type(crick_record.data.AO) == type([]):
-                alt_records_crick += [str(r) for c, r in zip(crick_record.data.AO,crick_record.site.ALT) if c > 0]
+                alt_records_crick += [str(r) for c, r in zip(crick_record.data.AO,crick_record.site.ALT)
+                                      if float(c)/watson_record.data.DP > 0.05 and c > 0]
 
             # account reference base observations for C
             if ref_base == 'C':
@@ -1277,7 +1281,8 @@ class CallBase(object):
             #TODO: check which other INFO objects could be made here
             #Start calling samples with site object
             samples_out = list()
-            for sample in sorted(self.processed_samples):
+            #Keep same order for SNP file observations
+            for sample in self.watson_file.samples:
                 if not self.processed_samples[sample]["snp"]:
                     empty_model = vcf.model._Call(site_obj,
                     sample, tuple([None]*len(site_obj.FORMAT.split(':'))))
