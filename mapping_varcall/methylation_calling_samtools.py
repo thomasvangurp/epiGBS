@@ -108,26 +108,11 @@ def parse_vcf(args):
 
             #Call methylation / SNPs: method of callbase class
             #TODO: check quality parameters elsewhere
-            return_code = call_base.methylation_calling()
-            if not return_code:
-                continue
-            # TODO: implement SNP filtering here
-            # SNPs should be checked to see if all have the same site
-            # 1. Take the site with the longest and most inclusive ALT allele
-            # 2. recall samples that are based on a different site, use the longest (ref) ALT locations and make new record
-            # 3. Define SNP calling rules, eg a valid SNP should be seen in both watson and crick if not masked by
-            # a DNA methytlation polymorphism. e.g. An A/T SNP should be present in both watson and crick, otherwise it
-            #   is not valid. a C/T SNP can be seen only in Crick and a G/A SNP only in watson. C/A snp should be T/A
-            #   in watson and C/A in cick. C/G SNPs should be T/G in watson and C/A in crick.
-            # 3a. Furthermore, SNPs should be present in at least one sample with a (combined) count of at least 2.
-            # SNP type should be noted, e.g. for IGV and bed file output filtering only look at SNPs with a C or G allele in them.
-            # These SNPs can have an impact on methylation calls, such methylation calls should be voided.
-
+            if call_base.watson_record.REF in ['C', 'G']:
+                return_code = call_base.methylation_calling()
+                if not return_code:
+                    continue
             return_code = call_base.filter_snps()
-            #continue
-            # quality_offset = args.min_quality
-            # min_alt_observations = 2
-            # min_quality = call_base.set_offsets(quality_offset, min_alt_observations)
 
             if not return_code:
                 continue
@@ -792,36 +777,23 @@ class CallBase(object):
         # If the sample is methylated, the processed_samples will be filled under the methylated key, or when it's
         # a normal SNP, it will be filed under the snp key or when it's both, under both.
 
-        self.processed_samples = {key: {'methylated': None, 'snp': None} for key in self.watson_file.samples}
+        self.processed_samples = {key: {'methylated': None} for key in self.watson_file.samples}
         # Determine the reference base at the position of the VCF call.
         ref_base = self.watson_record.REF
         # loop watson and crick record for combined samples.
         if min([self.watson_record.INFO['DP'], self.crick_record.INFO['DP']]) == 0:
             return None
-        if self.watson_record.REF not in ['C', 'G']:
-            watson_alt = sum(self.watson_record.INFO['AD'][1:])/float(self.watson_record.INFO['DP'])
-            crick_alt = sum(self.crick_record.INFO['AD'][1:])/float(self.crick_record.INFO['DP'])
-            if max(watson_alt, crick_alt) < 0.05:
-                return None
+        # if self.watson_record.REF not in ['C', 'G']:
+        #     watson_alt = sum(self.watson_record.INFO['AD'][1:])/float(self.watson_record.INFO['DP'])
+        #     crick_alt = sum(self.crick_record.INFO['AD'][1:])/float(self.crick_record.INFO['DP'])
+        #     if max(watson_alt, crick_alt) < 0.05:
+        #         return None
         self.call_genotypes()
         for watson_sample, crick_sample in izip(self.watson_record, self.crick_record):
             # If there are is no call for both the watson and crick record sample, continue as we can not determine
             # whether polymorphism is a SNP/methylation polymorphism.
             if not watson_sample.called or not crick_sample.called:
                 continue
-            # try:
-            #     if '*' in watson_sample.site.ALT[0].type or crick_sample.site.ALT[0].type == '*':
-            #         continue
-            # except AttributeError:
-            #     pass
-            if 'AD' in watson_sample.data._fields:
-                #create empty CallData object
-                # watson_sample = self.check_change_samtools_call(watson_sample)
-                # crick_sample = self.check_change_samtools_call(crick_sample)
-                # assert watson_sample.data.RO + watson_sample.data.AO == sum(watson_sample.data.AD)
-                # assert crick_sample.data.RO + crick_sample.data.AO == sum(crick_sample.data.AD)
-                if type(watson_sample.data.AD) == type(1):
-                    pass
             # Assigning the right alt base to the records.
             alt_watson = watson_sample.gt_bases.split('/')[1]
             alt_crick = crick_sample.gt_bases.split('/')[1]
@@ -832,19 +804,20 @@ class CallBase(object):
                 if alt_crick == 'C' and alt_watson in 'CT':
                     #Methylation in watson C/T No polymorphism in Crick: methylation
                     self.processed_samples[sample_name]['methylated'] = watson_sample
-                    try:
-                        #'AC' is not present in homozygous situations.
-                        if sum(crick_sample.site.INFO['AD'][1:]) > 0:
-                            #The Alternate alleles need to be called in at least one sample to be valid!
-                            self.processed_samples[sample_name]['snp'] = crick_sample
-                    except KeyError:
-                        pass
+                    # try:
+                    #     #'AC' is not present in homozygous situations.
+                    #     if sum(crick_sample.site.INFO['AD'][1:]) > 0:
+                    #         #The Alternate alleles need to be called in at least one sample to be valid!
+                    #         # self.processed_samples[sample_name]['snp'] = crick_sample
+                    # except KeyError:
+                    #     pass
                 elif alt_crick == 'A':
                     if alt_watson == 'A':
+                        pass
                         #Both watson and crick records should contain information on this alternate allele
                         #records are combined and written
-                        combined_record = combine_record_samples(watson_sample, crick_sample)
-                        self.processed_samples[sample_name]['snp'] = combined_record
+                        # combined_record = combine_record_samples(watson_sample, crick_sample)
+                        # self.processed_samples[sample_name]['snp'] = combined_record
                     else:
                         #alt_crick contains another base, this SNP is valid if present in watson.
                         if alt_watson in crick_sample.site.ALT:
@@ -861,13 +834,14 @@ class CallBase(object):
                                 watson_alt_pct = watson_sample.data.AO / float(watson_sample.data.DP)
                             if watson_alt_pct != 0.0 and crick_alt_pct != 0.0:
                                 if max(crick_alt_pct,watson_alt_pct)/min(crick_alt_pct,watson_alt_pct)< 1.5:
-                                    self.processed_samples[sample_name]['snp'] = crick_sample
+                                    continue
+                                    # self.processed_samples[sample_name]['snp'] = crick_sample
                                     #TODO: merge alt counts for watson and crick here
                             elif crick_alt_pct == 0.0:
                                 #REF:C watson C/T/A called as C/T crick C/A
                                 #We can call both SNP and methylation. SNP from crick reliable
                                 #Watson information on C/T ratio informative for methylation call
-                                self.processed_samples[sample_name]['snp'] = crick_sample
+                                # self.processed_samples[sample_name]['snp'] = crick_sample
                                 self.processed_samples[sample_name]['methylated'] = watson_sample
                             else:
                                 pass
@@ -882,17 +856,17 @@ class CallBase(object):
                     #C/G polymorphism in watson, C/G or C/A in Crick
                     #SNP information from watson, Methylation information from Crick
                      #TODO: After SNP, methylation > SNP
-                    self.processed_samples[sample_name]['snp'] = watson_sample
+                    # self.processed_samples[sample_name]['snp'] = watson_sample
                     self.processed_samples[sample_name]['methylated'] = crick_sample
-                elif crick_sample.gt_bases == 'C/A' and watson_sample.gt_bases == 'G/T':
-                    #Situation: C/G SNP, both alleles unmethylated.on watson C gets converted to T on watson G to A..
-                    #TODO: create combined record for both Watson and crick replacing alt in watson A=> G
-                    # and crick C=>T
-                    pass
+                # elif crick_sample.gt_bases == 'C/A' and watson_sample.gt_bases == 'G/T':
+                #     #Situation: C/G SNP, both alleles unmethylated.on watson C gets converted to T on watson G to A..
+                #     #TODO: create combined record for both Watson and crick replacing alt in watson A=> G
+                #     # and crick C=>T
+                #     pass
                 elif alt_watson == 'T':
                     if alt_crick == 'T':
                     #C/T variant in both watson and crick: SNP ==> only information from crick is reliable
-                        self.processed_samples[sample_name]['snp'] = crick_sample
+                        # self.processed_samples[sample_name]['snp'] = crick_sample
                         if set(watson_sample.gt_bases.replace('/','')) == set(['T']):
                             self.processed_samples[sample_name]['methylated'] = watson_sample
                     if alt_crick != 'T' and alt_crick != 'C':
@@ -901,119 +875,119 @@ class CallBase(object):
                         self.processed_samples[sample_name]['methylated'] = watson_sample
                         #Step 2. Is the SNP supported in watson strand?
                         #Can we call the SNP?
-                        if alt_crick in watson_sample.site.ALT:
-                            alt_index = watson_sample.site.ALT.index(alt_crick)
-                            try:
-                                alt_count = watson_sample.data.AO[alt_index]
-                            except TypeError:
-                                alt_count = watson_sample.data.AO
-                            try:
-                                t_count = watson_sample.data.AO[watson_sample.site.ALT.index('T')]
-                            except TypeError:
-                                t_count = watson_sample.data.AO
-                            if alt_count > t_count:
-                                self.processed_samples[sample_name]['snp'] = crick_sample
-                                #TODO: merge alt counts for watson and crick here
+                        # if alt_crick in watson_sample.site.ALT:
+                        #     alt_index = watson_sample.site.ALT.index(alt_crick)
+                        #     try:
+                        #         alt_count = watson_sample.data.AO[alt_index]
+                        #     except TypeError:
+                        #         alt_count = watson_sample.data.AO
+                        #     try:
+                        #         t_count = watson_sample.data.AO[watson_sample.site.ALT.index('T')]
+                        #     except TypeError:
+                        #         t_count = watson_sample.data.AO
+                        #     if alt_count > t_count:
+                        #         self.processed_samples[sample_name]['snp'] = crick_sample
+                        #         #TODO: merge alt counts for watson and crick here
             elif ref_base == 'G':
                 #Watson is homozygous reference (i.e. no SNP) and crick has Methylation variation
                 if alt_watson == 'G' and alt_crick in 'GA':
                     self.processed_samples[sample_name]['methylated'] = crick_sample
-                    try:
-                        #If one or more sample has an alternate allele call it for this individual as well
-                        if sum(watson_sample.site.INFO['AD'][1:]) > 0:
-                             self.processed_samples[sample_name]['snp'] = watson_sample
-                    except KeyError:
-                        pass
+                    # try:
+                    #     #If one or more sample has an alternate allele call it for this individual as well
+                    #     if sum(watson_sample.site.INFO['AD'][1:]) > 0:
+                    #          self.processed_samples[sample_name]['snp'] = watson_sample
+                    # except KeyError:
+                    #     pass
                 elif alt_crick == 'A' and alt_watson == 'A':
                     #The watson sample contains information on a SNP, G/A crick not reliable for SNP
-                    self.processed_samples[sample_name]['snp'] = watson_sample
+                    # self.processed_samples[sample_name]['snp'] = watson_sample
                     #The crick allele can only be queried for methylation variation if it is fully converted
                     #this means that no G can be in the Genotype.
                     if set(crick_sample.gt_bases.replace('/','')) == set(['A']):
                         self.processed_samples[sample_name]['methylated'] = crick_sample
-                elif alt_crick == 'T' and alt_watson == 'T':
-                    combined_record = combine_record_samples(watson_sample,crick_sample)
-                    self.processed_samples[sample_name]['snp'] = combined_record
-                    #TODO: After SNP, methylation > SNP
+                # elif alt_crick == 'T' and alt_watson == 'T':
+                #     combined_record = combine_record_samples(watson_sample,crick_sample)
+                #     self.processed_samples[sample_name]['snp'] = combined_record
+                #     #TODO: After SNP, methylation > SNP
                 elif alt_watson == 'C' and alt_crick in 'CT':
-                    self.processed_samples[sample_name]['snp'] = crick_sample
+                    # self.processed_samples[sample_name]['snp'] = crick_sample
                     self.processed_samples[sample_name]['methylated'] = watson_sample
-            elif ref_base == 'T':
-                if alt_watson == 'T' and alt_crick == 'T':
-                    #both samples have the reference allele
-                    #Determine the allele count for the Alternate allele for the site
-                    #If sum of alternate allele count > 0 ?? add relevant Allele to SNP output
-                    # if 'AC' in watson_sample.site.INFO and 'AC' in crick_sample.site.INFO:
-                    #     #Only Crick contains the SNP, TODO: check if valid!
-                    #     if sum(crick_sample.site.INFO['AC']) == 0 and sum(watson_sample.site.INFO['AC']) > 0:
-                    #         self.processed_samples[sample_name]['snp'] = watson_sample
-                    #     #Only Watson contains the SNP, TODO: check if valid!
-                    #     elif sum(crick_sample.site.INFO['AC']) > 0 and sum(watson_sample.site.INFO['AC']) == 0:
-                    #         self.processed_samples[sample_name]['snp'] = crick_sample
-                    #Both contain the SNP, combine records, TODO: check if combination is warranted!
-                    #Both watson and crick should contain the same type of non reference allele
-                    combined_record = combine_record_samples(watson_sample,crick_sample)
-                    self.processed_samples[sample_name]['snp'] = combined_record
-                    # elif 'AC' in watson_sample.site.INFO:
-                    #     #Only watson contains the SNP,
-                    #     #TODO: assert if valid. Only true if SNP is T/C!
-                    #     self.processed_samples[sample_name]['snp'] = watson_sample
-                    # elif 'AC' in crick_sample.site.INFO:
-                    #     #Only watson contains the SNP,
-                    #     #TODO: assert if valid. Only true if SNP is T/G!
-                    #     self.processed_samples[sample_name]['snp'] = crick_sample
-                elif alt_watson == 'A' and alt_crick == 'A':
-                    #TODO: check what is causing the error in combined_record it's not writing now.
-                    combined_record = combine_record_samples(watson_sample,crick_sample)
-                    # self.processed_samples[sample_name]['snp'] = combined_record
-                    self.processed_samples[sample_name]['snp'] = watson_sample
-                elif alt_watson == 'G' and alt_crick in 'GA':
-                    self.processed_samples[sample_name]['snp'] = watson_sample
-                    # self.processed_samples[sample_name]['methylated'] = crick_sample
-                elif alt_watson == 'C' and alt_crick in 'CT':
-                    self.processed_samples[sample_name]['snp'] = crick_sample
-                elif 'A' in alt_watson + alt_crick and ref_base in alt_watson + alt_crick:
-                    #one of the samples
-                    combined_record = combine_record_samples(watson_sample,crick_sample)
-                    self.processed_samples[sample_name]['snp'] = combined_record
-            elif ref_base == 'A':
-                if alt_watson == 'A' and alt_crick == 'A':
-                    #both samples have the reference allele
-                    #Determine the allele count for the Alternate allele for the site
-                    #If sum of alternate allele count > 0 ?? add relevant Allele to SNP output
-                    if 'AC' in watson_sample.site.INFO and 'AC' in crick_sample.site.INFO:
-                        #Only Crick contains the SNP, TODO: check if valid!
-                        if sum(crick_sample.site.INFO['AC']) == 0 and sum(watson_sample.site.INFO['AC']) > 0:
-                            self.processed_samples[sample_name]['snp'] = watson_sample
-                        #Only Watson contains the SNP, TODO: check if valid!
-                        elif sum(crick_sample.site.INFO['AC']) > 0 and sum(watson_sample.site.INFO['AC']) == 0:
-                            self.processed_samples[sample_name]['snp'] = crick_sample
-                        #Both contain the SNP, combine records, TODO: check if combination is warranted!
-                        #Both watson and crick should contain the same type of non reference allele
-                        elif sum(watson_sample.site.INFO['AC']) > 0 and sum(crick_sample.site.INFO['AC']) > 0:
-                            combined_record = combine_record_samples(watson_sample, crick_sample)
-                            self.processed_samples[sample_name]['snp'] = combined_record
-                    elif 'AC' in watson_sample.site.INFO:
-                        #Only watson contains the SNP,
-                        #TODO: assert if valid. Only true if SNP is A/G!
-                        self.processed_samples[sample_name]['snp'] = watson_sample
-                    elif 'AC' in crick_sample.site.INFO:
-                        #Only watson contains the SNP,
-                        #TODO: assert if valid. Only true if SNP is A/C!
-                        self.processed_samples[sample_name]['snp'] = crick_sample
-                elif alt_watson == 'T' and alt_crick == 'T':
-                    combined_record = combine_record_samples(watson_sample, crick_sample)
-                    self.processed_samples[sample_name]['snp'] = combined_record
-                elif alt_crick == 'C' and alt_watson in 'CT':
-                    self.processed_samples[sample_name]['snp'] = crick_sample
-                    #self.processed_samples[sample_name]['methylated'] = watson_sample
-                elif alt_watson == 'G' and alt_crick in 'GA':
-                    self.processed_samples[sample_name]['snp'] = watson_sample
-                    #self.processed_samples[sample_name]['methylated'] = crick_sample
-                elif 'T' in alt_watson + alt_crick and ref_base in alt_watson + alt_crick:
-                    #one of the samples
-                    combined_record = combine_record_samples(watson_sample, crick_sample)
-                    self.processed_samples[sample_name]['snp'] = combined_record
+            # elif ref_base == 'T':
+            #     if alt_watson == 'T' and alt_crick == 'T':
+            #         #both samples have the reference allele
+            #         #Determine the allele count for the Alternate allele for the site
+            #         #If sum of alternate allele count > 0 ?? add relevant Allele to SNP output
+            #         # if 'AC' in watson_sample.site.INFO and 'AC' in crick_sample.site.INFO:
+            #         #     #Only Crick contains the SNP, TODO: check if valid!
+            #         #     if sum(crick_sample.site.INFO['AC']) == 0 and sum(watson_sample.site.INFO['AC']) > 0:
+            #         #         self.processed_samples[sample_name]['snp'] = watson_sample
+            #         #     #Only Watson contains the SNP, TODO: check if valid!
+            #         #     elif sum(crick_sample.site.INFO['AC']) > 0 and sum(watson_sample.site.INFO['AC']) == 0:
+            #         #         self.processed_samples[sample_name]['snp'] = crick_sample
+            #         #Both contain the SNP, combine records, TODO: check if combination is warranted!
+            #         #Both watson and crick should contain the same type of non reference allele
+            #         combined_record = combine_record_samples(watson_sample,crick_sample)
+            #         self.processed_samples[sample_name]['snp'] = combined_record
+            #         # elif 'AC' in watson_sample.site.INFO:
+            #         #     #Only watson contains the SNP,
+            #         #     #TODO: assert if valid. Only true if SNP is T/C!
+            #         #     self.processed_samples[sample_name]['snp'] = watson_sample
+            #         # elif 'AC' in crick_sample.site.INFO:
+            #         #     #Only watson contains the SNP,
+            #         #     #TODO: assert if valid. Only true if SNP is T/G!
+            #         #     self.processed_samples[sample_name]['snp'] = crick_sample
+            #     elif alt_watson == 'A' and alt_crick == 'A':
+            #         #TODO: check what is causing the error in combined_record it's not writing now.
+            #         combined_record = combine_record_samples(watson_sample,crick_sample)
+            #         # self.processed_samples[sample_name]['snp'] = combined_record
+            #         self.processed_samples[sample_name]['snp'] = watson_sample
+            #     elif alt_watson == 'G' and alt_crick in 'GA':
+            #         self.processed_samples[sample_name]['snp'] = watson_sample
+            #         # self.processed_samples[sample_name]['methylated'] = crick_sample
+            #     elif alt_watson == 'C' and alt_crick in 'CT':
+            #         self.processed_samples[sample_name]['snp'] = crick_sample
+            #     elif 'A' in alt_watson + alt_crick and ref_base in alt_watson + alt_crick:
+            #         #one of the samples
+            #         combined_record = combine_record_samples(watson_sample,crick_sample)
+            #         self.processed_samples[sample_name]['snp'] = combined_record
+            # elif ref_base == 'A':
+            #     if alt_watson == 'A' and alt_crick == 'A':
+            #         #both samples have the reference allele
+            #         #Determine the allele count for the Alternate allele for the site
+            #         #If sum of alternate allele count > 0 ?? add relevant Allele to SNP output
+            #         if 'AC' in watson_sample.site.INFO and 'AC' in crick_sample.site.INFO:
+            #             #Only Crick contains the SNP, TODO: check if valid!
+            #             if sum(crick_sample.site.INFO['AC']) == 0 and sum(watson_sample.site.INFO['AC']) > 0:
+            #                 self.processed_samples[sample_name]['snp'] = watson_sample
+            #             #Only Watson contains the SNP, TODO: check if valid!
+            #             elif sum(crick_sample.site.INFO['AC']) > 0 and sum(watson_sample.site.INFO['AC']) == 0:
+            #                 self.processed_samples[sample_name]['snp'] = crick_sample
+            #             #Both contain the SNP, combine records, TODO: check if combination is warranted!
+            #             #Both watson and crick should contain the same type of non reference allele
+            #             elif sum(watson_sample.site.INFO['AC']) > 0 and sum(crick_sample.site.INFO['AC']) > 0:
+            #                 combined_record = combine_record_samples(watson_sample, crick_sample)
+            #                 self.processed_samples[sample_name]['snp'] = combined_record
+            #         elif 'AC' in watson_sample.site.INFO:
+            #             #Only watson contains the SNP,
+            #             #TODO: assert if valid. Only true if SNP is A/G!
+            #             self.processed_samples[sample_name]['snp'] = watson_sample
+            #         elif 'AC' in crick_sample.site.INFO:
+            #             #Only watson contains the SNP,
+            #             #TODO: assert if valid. Only true if SNP is A/C!
+            #             self.processed_samples[sample_name]['snp'] = crick_sample
+            #     elif alt_watson == 'T' and alt_crick == 'T':
+            #         combined_record = combine_record_samples(watson_sample, crick_sample)
+            #         self.processed_samples[sample_name]['snp'] = combined_record
+            #     elif alt_crick == 'C' and alt_watson in 'CT':
+            #         self.processed_samples[sample_name]['snp'] = crick_sample
+            #         #self.processed_samples[sample_name]['methylated'] = watson_sample
+            #     elif alt_watson == 'G' and alt_crick in 'GA':
+            #         self.processed_samples[sample_name]['snp'] = watson_sample
+            #         #self.processed_samples[sample_name]['methylated'] = crick_sample
+            #     elif 'T' in alt_watson + alt_crick and ref_base in alt_watson + alt_crick:
+            #         #one of the samples
+            #         combined_record = combine_record_samples(watson_sample, crick_sample)
+            #         self.processed_samples[sample_name]['snp'] = combined_record
         return 1
 
     def combine_snp_record(self,watson_record, crick_record, convert_dict):
@@ -1303,7 +1277,7 @@ class CallBase(object):
             #TODO: check which other INFO objects could be made here
             #Start calling samples with site object
             samples_out = list()
-            for sample in self.processed_samples:
+            for sample in sorted(self.processed_samples):
                 if not self.processed_samples[sample]["snp"]:
                     empty_model = vcf.model._Call(site_obj,
                     sample, tuple([None]*len(site_obj.FORMAT.split(':'))))
