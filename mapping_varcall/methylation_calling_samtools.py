@@ -93,7 +93,42 @@ def parse_vcf(args):
     #use vcf.utils.walk_together
     combined_records = vcf.utils.walk_together(watson_file,crick_file)
     old_chrom = None
-    for records in combined_records:
+    next_watson = True
+    next_crick = True
+    while True:
+        if next_watson:
+            try:
+                watson_record = watson_file.next()
+            except StopIteration:
+                break
+        if next_crick:
+            try:
+                crick_record = crick_file.next()
+            except StopIteration:
+                break
+        if watson_record.CHROM == crick_record.CHROM:
+            if watson_record.POS > crick_record.POS:
+                next_watson = False
+                next_crick = True
+                continue
+            elif watson_record.POS < crick_record.POS:
+                next_crick = False
+                next_watson = True
+                continue
+            elif watson_record.POS == crick_record.POS:
+                next_watson = True
+                next_crick = True
+        else:
+            #we are no longer on the same chromosome
+            if int(watson_record.CHROM) > int(crick_record.CHROM):
+                next_crick = True
+                next_watson = False
+                continue
+            elif int(watson_record.CHROM) < int(crick_record.CHROM):
+                next_crick = False
+                next_watson = True
+                continue
+        records = (watson_record,crick_record)
         if None not in records:
             #both records need to be present and valid
             # qsum = sum(record.QUAL for record in records)
@@ -618,6 +653,39 @@ class CallBase(object):
                                     call_data(*values))
         return model
 
+    def combine_fw_reverse(self, ADF , ADR):
+        """combined forward and reverse record"""
+        AD = []
+        fw_count = float(sum(ADF))
+        rev_count = float(sum(ADR))
+        #in case either FW or reverse strand not calles use only available strand
+        if fw_count > 0 and rev_count == 0:
+            return ADF
+        elif fw_count == 0 and rev_count > 0:
+            return ADR
+        elif fw_count >= 10 and rev_count < 10:
+            return ADF
+        elif fw_count < 10 and rev_count >= 10:
+            return ADR
+        DP = fw_count + rev_count
+        if DP  == 0:
+            return ADF
+        for i,j in zip(ADF,ADR):
+            fwd_pct = i / fw_count
+            rev_pct = j / rev_count
+            diff_pct = abs(fwd_pct - rev_pct)
+            if diff_pct < 0.05:
+                AD.append(i + j)
+            else:
+                if fwd_pct > 0.05 and rev_pct > 0.05:
+                    AD.append(i + j)
+                elif max([i,j]) < 10 and min([i,j]) < 3:
+                    #minimal number of reads leading to disagreement
+                    AD.append(0)
+                else:
+                    return None
+        assert len(AD) == len(ADF)
+        return AD
     def call_samples(self, record):
         samples_out = []
         alleles_observed = []
@@ -625,30 +693,27 @@ class CallBase(object):
         call_data = vcf.model.make_calldata_tuple(header)
         for sample in record.samples:
             out_count = {}
-            for pos,nt in enumerate(record.ALT):
-                count = sample.data.AD[pos+1]
+            AD = []
+            if 'ADFR' in sample.data._fields:
+                AD_input = self.combine_fw_reverse(sample.data.ADF,sample.data.ADR)
+            else:
+                AD_input = sample.data.AD
+            for pos,nt in enumerate(record.alleles):
+                try:
+                    count = AD_input[pos]
+                except TypeError:
+                    AD = [0]
+                    continue
+                AD.append(count)
                 if count:
-                    #ADF is Allelic Depth on forward strand
-                    if 'ADFR' in sample.data._fields:
-                        #Get minimum count for both forward and reverse mapped reads
-                        min_count = float(min([sample.data.ADF[pos + 1], sample.data.ADR[pos + 1]]))
-                        #if this count is 0 or lower than 5%, do not take the allele into account.
-                        min_strand_cover = min([sum(sample.data.ADF), sum(sample.data.ADR)])
-                        #min cover of one of the strands is too low. take total
-                        if min_strand_cover < 10:
-                            #not enough data on one strand, use both
-                            #TODO: check if this could be done differently!
-                            if count / float(sample.data.DP) > 0.05:
+                    if count / float(sample.data.DP) > 0.05:
+                        if pos:
+                            #TODO: hacckish, improve on GT calling method
                                 out_count[str(nt)] = count
-                            continue
-                        if min_count / min_strand_cover > 0.05:
-                            out_count[str(nt)] = count
-                    else:
-                        #method for when no forward or reverse allelic depth is known.
-                        if count / float(sample.data.DP) > 0.05:
-                            out_count[str(nt)] = count
+            if AD_input == None:
+                AD_input = [0]
             if out_count == {}:
-                if sum(sample.data.AD) == 0:
+                if sum(AD) == 0:
                     #sample is not called as the sum of all calls is 0
                     #TODO: implement treshold here based on number of observations for valid allele call?
                     GT = './.'
@@ -658,30 +723,13 @@ class CallBase(object):
             elif len(out_count) == 1:
                 #only one alternate allele found
                 alt_pos = [str(nt) for nt in record.ALT].index(out_count.keys()[0]) + 1
-                if sample.data.AD[0] / float(sample.data.DP) > 0.05:
-                    #reference allele is present more than 5%
-                    if 'ADFR' not in sample.data._fields:
-                        GT = '0/%s'%alt_pos
-                    else:
-                        #Check if reference allele is indeed observed in both forward and reverse mapping reads
-                        GT = []
-                        for i in [0,1]:
-
-                            try:
-                                if min([float(sample.data.ADF[i])/sum(sample.data.ADF),
-                                        float(sample.data.ADR[i])/sum(sample.data.ADR)]) > 0.05:
-                                    GT.append(str(i))
-                            except ZeroDivisionError:
-                                pass
-                        if GT == []:
-                            GT = './.'
-                        else:
-                            GT = '%s/%s'%(GT[0],GT[-1])
+                if AD[1] / float(sample.data.DP) > 0.05:
+                    GT = '0/%s'%alt_pos
                 else:
                     #only alternate allele is present
                     GT = '%s/%s'%(alt_pos,alt_pos)
             else:
-                if sample.data.AD[0] / float(sample.data.DP) > 0.05:
+                if AD[1] / float(sample.data.DP) > 0.05:
                     GT = ['0']
                     i = 1
                 else:
@@ -695,48 +743,30 @@ class CallBase(object):
                             alt_pos = [str(v) for v in record.ALT].index(str(nt)) + 1
                             GT.append(str(alt_pos))
                 GT = '/'.join(GT)
-            if 'ADFR' in sample.data._fields and min([sum(sample.data.ADF),sum(sample.data.ADR)]) > 10:
-                AD = []
-                for obs_fw,obs_rev in zip(sample.data.ADF,sample.data.ADR):
-                    try:
-                        fw_ratio =  obs_fw / float(sum(sample.data.ADF))
-                    except ZeroDivisionError:
-                        fw_ratio  = 0
-                    try:
-                        rev_ratio = obs_rev / float(sum(sample.data.ADR))
-                    except ZeroDivisionError:
-                        rev_ratio = 0
-                    if min([fw_ratio,rev_ratio]) > 0.05:
-                        AD.append(obs_fw + obs_rev)
-                    else:
-                        AD.append(0)
-                AO = [count for (count,allele) in zip(AD[1:-1],sample.site.ALT) if allele in record.ALT]
-            elif 'ADFR' in sample.data._fields:
-                AD = sample.data.AD
-                AO = AD[1:]
-                AO = [count for (count,allele) in zip(AD[1:-1],sample.site.ALT) if allele in record.ALT]
+            if GT != './.':
+                AO = [count for (count,allele) in zip(AD[1:],sample.site.ALT) if allele in record.ALT]
+                AD = [0] + sample.data.AD[1:]
+                if AO == []:
+                    AO = [0] * len(record.ALT)
+                elif len(AO) != len(record.ALT):
+                    AO.append(0)
+                assert len(AO) == len(record.ALT)
             else:
-                AO = [count for (count,allele) in zip(sample.data.AD[1:-1],sample.site.ALT) if allele in record.ALT]
+                AO = [0] * len(record.ALT)
                 AD = sample.data.AD
-            if AO == []:
-                AO = None
             values = [GT,
                       sample.data.DP,
                       sample.data.AD,
-                      AD[0],
+                      AD_input[0],
                       AO
                       ]
             sample.site.FORMAT = ':'.join(header)
             model = vcf.model._Call(sample.site,
-                                        sample.sample,
-                                        call_data(*values))
+                                    sample.sample,
+                                    call_data(*values))
             model.site = record
             samples_out.append(model)
         record.samples = samples_out
-        try:
-            assert len(record.samples[0].data.AO) == len(record.samples[0].site.ALT)
-        except TypeError:
-            assert len(record.samples[0].site.ALT) == 1
 
 
         return record
@@ -1055,6 +1085,8 @@ class CallBase(object):
                         nt_counts['G'] += crick_record.data.AO[alt_index]
                     except ValueError:
                         pass
+                    except TypeError:
+                        pass
             if ref_base == 'A':
                 #Add watson record reference observations as these are never disputed.
                 nt_counts['A'] += watson_record.data.RO
@@ -1074,6 +1106,15 @@ class CallBase(object):
                 alt_records += alt_records_watson
             if type(crick_record.data.AO) == type([]):
                 alt_records += alt_records_crick
+            #TODO: filter alt_bases: some bases should occur in both watson and crick before they are called as a SNP
+            #if A in alt_records_watson it must also be in alt_records_watson
+            #if A in alt_records_crick A or G must be in alt_records_watson
+            #if T in alt_records_crick it must also be present in alt_record_watson
+            #if T in alt_records_watson C or T must be in alt_record_crick
+            #if C in alt_records_watson it must also be alt_record_crick
+            #if C in alt_records_crick, T or C should be in REF or ALT records watson
+            #if G in alt_records_crick it must also be alt_record_watson
+            #if G in alt_records_watson, A or G should be in REF or ALT records crick
 
             for nt in convert_dict['watson'].keys():
                 #only process records that exist in either the watson or crick alt site
@@ -1122,6 +1163,10 @@ class CallBase(object):
                                     #only call the T in crick
                                     if crick_alt_index:
                                         nt_counts[nt] += crick_record.data.AO[crick_alt_index]
+                                    if 'T' not in crick_record.site.ALT and 'T' in watson_record.site.ALT:
+                                        #'T' is converted C from watson. Add for SNP count here in combined allele
+                                        t_index = [str(r) for r in watson_record.site.ALT].index('T')
+                                        nt_counts[nt] += watson_record.data.AO[t_index]
                                     continue
                             #C Allele is not present in crick record, no evidence for a SNP on this position.
                             #Assume that T count is legible T, used counts from both watson and crick here
@@ -1149,6 +1194,10 @@ class CallBase(object):
                                     #only call the T in watson
                                     if watson_alt_index:
                                         nt_counts[nt] += watson_record.data.AO[watson_alt_index]
+                                    if 'A' not in watson_record.site.ALT and 'A' in crick_record.site.ALT:
+                                        #'A' is converted G from crick. Add for SNP count here in combined allele
+                                        a_index = [str(r) for r in crick_record.site.ALT].index('A')
+                                        nt_counts[nt] += crick_record.data.AO[a_index]
                                     continue
                             #C Allele is not present in watson record, no evidence for a SNP on this position.
                             #Assume that T count is legible T, used counts from both crick and watson here
