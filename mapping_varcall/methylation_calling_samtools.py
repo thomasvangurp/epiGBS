@@ -694,7 +694,7 @@ class CallBase(object):
         for sample in record.samples:
             out_count = {}
             AD = []
-            if 'ADFR' in sample.data._fields:
+            if 'ADF' in sample.data._fields:
                 AD_input = self.combine_fw_reverse(sample.data.ADF,sample.data.ADR)
             else:
                 AD_input = sample.data.AD
@@ -1045,10 +1045,10 @@ class CallBase(object):
             alt_records_watson, alt_records_crick = ([], [])
             if type(watson_record.data.AO) == type([]):
                 alt_records_watson += [str(r) for c, r in zip(watson_record.data.AO,watson_record.site.ALT)
-                                       if float(c)/watson_record.data.DP > 0.05 and c > 0]
+                                       if float(c)/watson_record.data.DP > 0.05 and c > 2]
             if type(crick_record.data.AO) == type([]):
                 alt_records_crick += [str(r) for c, r in zip(crick_record.data.AO,crick_record.site.ALT)
-                                      if float(c)/watson_record.data.DP > 0.05 and c > 0]
+                                      if float(c)/watson_record.data.DP > 0.05 and c > 2]
 
             # account reference base observations for C
             if ref_base == 'C':
@@ -1102,20 +1102,62 @@ class CallBase(object):
                     nt_counts['T'] += watson_record.data.RO
 
             alt_records = []
-            if type(watson_record.data.AO) == type([]):
-                alt_records += alt_records_watson
-            if type(crick_record.data.AO) == type([]):
-                alt_records += alt_records_crick
-            #TODO: filter alt_bases: some bases should occur in both watson and crick before they are called as a SNP
-            #if A in alt_records_watson it must also be in alt_records_watson
-            #if A in alt_records_crick A or G must be in alt_records_watson
-            #if T in alt_records_crick it must also be present in alt_record_watson
-            #if T in alt_records_watson C or T must be in alt_record_crick
-            #if C in alt_records_watson it must also be alt_record_crick
-            #if C in alt_records_crick, T or C should be in REF or ALT records watson
-            #if G in alt_records_crick it must also be alt_record_watson
-            #if G in alt_records_watson, A or G should be in REF or ALT records crick
-
+            # if type(watson_record.data.AO) == type([]):
+            #     alt_records += alt_records_watson
+            # if type(crick_record.data.AO) == type([]):
+            #     alt_records += alt_records_crick
+            str_alt_records_watson = [str(r) for r in alt_records_watson]
+            str_alt_records_crick = [str(r) for r in alt_records_crick]
+            if 'A' in str_alt_records_crick:
+                #if A in alt_records_crick A or G must be in alt_records_watson
+                if 'G' in str_alt_records_watson or 'A' in str_alt_records_watson or ref_base in 'GA':
+                    try:
+                        alt_records.append(vcf.model._Substitution('A'))
+                    except AttributeError:
+                        pass
+                else:
+                    alt_records = None
+            elif 'A' in str_alt_records_watson:
+                #A was not seen in alt_record watson whereas it should have been. invalidate call
+                alt_records = None
+            if 'T' in str_alt_records_watson:
+                #if T in alt_records_watson C or T must be in alt_record_crick
+                if 'T' in str_alt_records_crick or 'C' in str_alt_records_crick or ref_base in 'CT':
+                    try:
+                        alt_records.append(vcf.model._Substitution('T'))
+                    except AttributeError:
+                        pass
+                else:
+                    alt_records = None
+            elif 'T' in str_alt_records_crick:
+                #T was not seen in alt_record watson whereas it should have been. invalidate call
+                alt_records = None
+            if 'C' in str_alt_records_crick:
+                #if C in alt_records_crick, T or C should be in REF or ALT records watson
+                if 'T' in str_alt_records_watson or 'C' in str_alt_records_watson or ref_base in 'CT':
+                    try:
+                        alt_records.append(vcf.model._Substitution('C'))
+                    except AttributeError:
+                        pass
+                else:
+                    alt_records = None
+            elif 'C' in str_alt_records_watson:
+                alt_records = None
+                #C was not seen in alt_record_crick whereas it should have been. invalidate call
+            if 'G' in str_alt_records_watson:
+                #if G in alt_records_watson, G or A should be in REF or ALT records watson
+                if 'A' in str_alt_records_crick or 'G' in str_alt_records_crick or ref_base in 'GA':
+                    try:
+                        alt_records.append(vcf.model._Substitution('G'))
+                    except AttributeError:
+                        pass
+                else:
+                    alt_records = None
+            elif 'G' in str_alt_records_crick:
+                #G was not seen in alt_record_crick whereas it should have been. invalidate call
+                alt_records = None
+            if alt_records == None:
+                return {}
             for nt in convert_dict['watson'].keys():
                 #only process records that exist in either the watson or crick alt site
                 if nt not in alt_records:
