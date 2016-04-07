@@ -134,8 +134,8 @@ def parse_vcf(args):
 
             call_base.write_records()
 
-            # if int(call_base.watson_record.CHROM) > 1000:
-            #     break
+            if int(call_base.watson_record.CHROM) > 2:
+                break
 
             #TODO If there are no SNP's in the cluster/chromosome, the igv file needs to be written without a sliding window.
             old_chrom = records[0].CHROM
