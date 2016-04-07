@@ -158,9 +158,11 @@ def parse_vcf(args):
             call_base.processed_samples = {key: {'methylated': None,'snp': None}
                                            for key in call_base.watson_file.samples}
 
+            if call_base.watson_record.CHROM == '50':
+                break
+
             #TODO If there are no SNP's in the cluster/chromosome, the igv file needs to be written without a sliding window.
             old_chrom = records[0].CHROM
-
 
 
 def make_empty_sample(sample):
@@ -685,6 +687,7 @@ class CallBase(object):
                     return None
         assert len(AD) == len(ADF)
         return AD
+
     def call_samples(self, record):
         samples_out = []
         alleles_observed = []
