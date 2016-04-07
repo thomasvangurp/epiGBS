@@ -158,8 +158,8 @@ def parse_vcf(args):
             call_base.processed_samples = {key: {'methylated': None,'snp': None}
                                            for key in call_base.watson_file.samples}
 
-            if call_base.watson_record.CHROM == '50':
-                break
+            #if call_base.watson_record.CHROM == '2':
+            #    break
 
             #TODO If there are no SNP's in the cluster/chromosome, the igv file needs to be written without a sliding window.
             old_chrom = records[0].CHROM
@@ -1231,8 +1231,8 @@ class CallBase(object):
                 except KeyError:
                     combined_allele_count[k] = v
         if len(combined_allele_count.keys()) == 1 and combined_allele_count.keys()[0] == self.watson_record.REF:
-            #all observations are reference allele. No SNP calling output is required here.
-            #set all SNP records to None
+            # all observations are reference allele. No SNP calling output is required here.
+            # set all SNP records to None
             for sample in self.processed_samples:
                 self.processed_samples[sample]['snp'] = None
         else:
@@ -1247,10 +1247,10 @@ class CallBase(object):
             site_obj.ALT = alt_alleles
             site_obj.INFO['DP'] = sum(combined_allele_count.values())
             site_obj.INFO['AD'] = [int(i[1]) for i in combined_count_tuple]
-            #TODO: check which other INFO objects could be made here
-            #Start calling samples with site object
+            # TODO: check which other INFO objects could be made here
+            # Start calling samples with site object
             samples_out = list()
-            #Keep same order for SNP file observations
+            # Keep same order for SNP file observations
             for sample in self.watson_file.samples:
                 if not self.processed_samples[sample]["snp"]:
                     empty_model = vcf.model._Call(site_obj,
@@ -1270,11 +1270,17 @@ class CallBase(object):
                     else:
                         AO.append(0)
                 DP = sum(allele_count.values())
-                #call GT
+                # call GT
                 if DP == 0:
                     GT = "./."
                 elif RO == DP:
-                    GT = "0/0"
+                    # TODO: Check if true in all SNP-calls
+                    # If the reference observations are equal to the total depth there is no SNP.
+                    empty_model = vcf.model._Call(site_obj,
+                    sample, tuple([None]*len(site_obj.FORMAT.split(':'))))
+                    samples_out.append(empty_model)
+                    continue
+                    # GT = "0/0"
                 elif RO > max(AO):
                     if len(AO) == 1:
                         GT = "0/1"
