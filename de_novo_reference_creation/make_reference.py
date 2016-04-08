@@ -34,7 +34,7 @@ dependencies['pigz'] = ''
 
 usearch = "usearch_8.0.1409_i86osx32"
 vsearch = "vsearch"
-seqtk = "/opt/bin/seqtk"
+seqtk = "seqtk"
 pear = "pear"
 mergeBSv3 = "mergeBSv3.py"
 create_consensus = "create_consensus.py"
@@ -90,17 +90,18 @@ def run_subprocess(cmd,args,log_message):
         log.write("now starting:\t%s\n"%log_message)
         log.write('running:\t%s\n'%(' '.join(cmd)))
         log.flush()
-        p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True,executable='/bin/bash')
+        p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True,executable='bash')
         stdout, stderr = p.communicate()
         stdout = stdout.replace('\r','\n')
         stderr = stderr.replace('\r','\n')
+        # stderr = None
         if stdout:
             log.write('stdout:\n%s\n'%stdout)
         if stderr:
             log.write('stderr:\n%s\n'%stderr)
-        return_code = p.poll()
-        if return_code:
-            raise RuntimeError(stderr)
+        # return_code = p.poll()
+        # if return_code:
+        #     raise RuntimeError(stderr)
         log.write('finished:\t%s\n\n'%log_message)
     return 0
 
@@ -116,22 +117,18 @@ def merge_reads(args):
         else:
             head = ''
         if strand == 'watson':
-            grep_watson = "|grep Watson -A 3 |sed '/^--$/d'"
+            grep_watson = "|grep 'Watson\|watson' -A 3 |sed '/^--$/d'"
             cmd1 = ['gzcat '+args.forward + head + grep_watson + '|pigz -c >'+fwd_out.name]
             cmd2 = ['gzcat '+args.reverse + head + grep_watson + '|pigz -c >'+rev_out.name]
         else:
-            grep_crick = "|grep Crick -A 3 |sed '/^--$/d'"
+            grep_crick = "|grep 'Crick\|crick' -A 3 |sed '/^--$/d'"
             cmd1 = ['gzcat '+args.forward + head + grep_crick + '|pigz -c  >'+fwd_out.name]
             cmd2 = ['gzcat '+args.reverse + head + grep_crick + '|pigz -c  >'+rev_out.name]
         log = "Write input files to tmpdir using gzcat"
         run_subprocess(cmd1,args,log)
         run_subprocess(cmd2,args,log)
         #todo: check if pear is on path
-        pear = find_executable('pear')
-        if not pear:
-            raise EnvironmentError("Pear was not found, please make sure it exists on your path or install it from"+
-                        " \nhttp://www.exelixis-lab.org/web/software/pear")
-        cmd = [pear]
+        cmd = ['pear']
         #set reads
         cmd+=['-f',fwd_out.name]
         cmd+=['-r',rev_out.name]
