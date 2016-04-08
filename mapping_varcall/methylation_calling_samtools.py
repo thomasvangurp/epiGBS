@@ -713,6 +713,8 @@ class CallBase(object):
                             #TODO: hacckish, improve on GT calling method
                                 out_count[str(nt)] = count
             if AD_input == None:
+                #ONLY relevant in case of strand filtering on ADF and ADR records, if None is returen there was a mismatch
+                #between the forward en reverse strand reads.
                 AD_input = [0]
             if out_count == {}:
                 if sum(AD) == 0:
@@ -725,7 +727,7 @@ class CallBase(object):
             elif len(out_count) == 1:
                 #only one alternate allele found
                 alt_pos = [str(nt) for nt in record.ALT].index(out_count.keys()[0]) + 1
-                if AD[1] / float(sample.data.DP) > 0.05:
+                if AD[0] / float(sample.data.DP) > 0.05:
                     GT = '0/%s'%alt_pos
                 else:
                     #only alternate allele is present
@@ -738,7 +740,7 @@ class CallBase(object):
                     i = 2
                     GT = []
                 #more than one alternate allele found determine top 2 alleles
-                max_values = sorted(out_count.values())[:i]
+                max_values = sorted(out_count.values())[::-1][:i]
                 for value in max_values:
                     for nt,count in out_count.items():
                         if count == value:
@@ -785,7 +787,7 @@ class CallBase(object):
             keep_nt = [None]
         self.watson_record.ALT = keep_nt
         self.watson_record.alleles = [self.watson_record.REF] + keep_nt
-
+        #TODO: give call_samples keep_nt
         self.watson_record = self.call_samples(self.watson_record)
 
         keep_nt = list()
@@ -899,89 +901,92 @@ class CallBase(object):
                     self.processed_samples[sample_name]['methylated'] = watson_sample
         return 1
 
-    def combine_snp_record(self,watson_record, crick_record, convert_dict):
+    def combine_snp_record(self,watson_sample, crick_sample, convert_dict):
+        #TODO: combines samples, not record
         """Combined SNP calls into one record taking into account expected bisulfite conversions"""
-        if not watson_record.called:
+        if not watson_sample.called:
             return None
             #TODO: make SNP calling rules for when watson or SNP record is uncalled
-            depth = crick_record.data.DP
-            ref_observations = crick_record.data.RO
-            alt_observations = crick_record.data.AO
-        elif not crick_record.called:
+            depth = crick_sample.data.DP
+            ref_observations = crick_sample.data.RO
+            alt_observations = crick_sample.data.AO
+        elif not crick_sample.called:
             #TODO: make SNP calling rules for when watson or SNP record is uncalled
             return None
-            depth = watson_record.data.DP
-            ref_observations = watson_record.data.RO
-            alt_observations = watson_record.data.AO
+            depth = watson_sample.data.DP
+            ref_observations = watson_sample.data.RO
+            alt_observations = watson_sample.data.AO
         else:
             #determine on which sample we should base output record
-            depth = watson_record.data.DP + crick_record.data.DP
+            depth = watson_sample.data.DP + crick_sample.data.DP
             ref_observations = 0
-            ref_base = watson_record.site.REF
+            ref_base = watson_sample.site.REF
             nt_counts = {'C': 0, 'T': 0, 'G': 0, 'A': 0}
             alt_records_watson, alt_records_crick = ([], [])
-            if type(watson_record.data.AO) == type([]):
-                alt_records_watson += [str(r) for c, r in zip(watson_record.data.AO,watson_record.site.ALT)
-                                       if float(c)/watson_record.data.DP > 0.05 and c > 2]
-            if type(crick_record.data.AO) == type([]):
-                alt_records_crick += [str(r) for c, r in zip(crick_record.data.AO,crick_record.site.ALT)
-                                      if float(c)/crick_record.data.DP > 0.05 and c > 2]
+            if type(watson_sample.data.AO) == type([]):
+                #TODO: reconsider limit of 2
+                #TODO: remove double filtering.
+                alt_records_watson += [str(r) for c, r in zip(watson_sample.data.AO,watson_sample.site.ALT)
+                                       if float(c)/watson_sample.data.DP > 0.05 and c > 2]
+            if type(crick_sample.data.AO) == type([]):
+                alt_records_crick += [str(r) for c, r in zip(crick_sample.data.AO,crick_sample.site.ALT)
+                                      if float(c)/crick_sample.data.DP > 0.05 and c > 2]
 
             # account reference base observations for C
             if ref_base == 'C':
-                nt_counts['C'] += crick_record.data.RO
+                nt_counts['C'] += crick_sample.data.RO
                 # Methylated C's are evidence of C. This will create an inbalance in the allele count as T's in watson cannot be taken into accoun
-                nt_counts['C'] += watson_record.data.RO
+                nt_counts['C'] += watson_sample.data.RO
                 try:
-                    crick_index_T = [str(r) for r in crick_record.site.ALT].index('T')
+                    crick_index_T = [str(r) for r in crick_sample.site.ALT].index('T')
                 except ValueError:
                     crick_index_T = None
                 # We can only add all C and T watson observations if there is no evidence of a C/T SNP in Crick
-                if crick_index_T == None or crick_record.data.AO[crick_index_T] / float(crick_record.data.DP) < 0.05:
+                if crick_index_T == None or crick_sample.data.AO[crick_index_T] / float(crick_sample.data.DP) < 0.05:
                     # all T and C counts for the watson allele are stored as
                     # C observations as no evidence of a T alt allele is present on Crick
                     try:
-                        alt_index = [str(r) for r in watson_record.site.ALT].index('T')
-                        nt_counts['C'] += watson_record.data.AO[alt_index]
+                        alt_index = [str(r) for r in watson_sample.site.ALT].index('T')
+                        nt_counts['C'] += watson_sample.data.AO[alt_index]
                     except ValueError:
                         pass
             if ref_base == 'G':
                 #Add watson record reference observations as these are never disputed.
-                nt_counts['G'] += watson_record.data.RO
-                nt_counts['G'] += crick_record.data.RO
+                nt_counts['G'] += watson_sample.data.RO
+                nt_counts['G'] += crick_sample.data.RO
                 try:
-                    watson_index_A = [str(r) for r in watson_record.site.ALT].index('A')
+                    watson_index_A = [str(r) for r in watson_sample.site.ALT].index('A')
                 except ValueError:
                     watson_index_A = None
                 #TODO 1/2: check if we should use implied evidence for absence of SNP to proceed with calling
                 #TODO 2/2: converted reference allele. for now, leave intact. Evaluate!
-                if watson_index_A == None or watson_record.data.AO[watson_index_A] / float(watson_record.data.DP) < 0.05:
+                if watson_index_A == None or watson_sample.data.AO[watson_index_A] / float(watson_sample.data.DP) < 0.05:
                     #all A counts for the watson allele are stored as G observations
                     try:
-                        alt_index = [str(r) for r in crick_record.site.ALT].index('A')
-                        nt_counts['G'] += crick_record.data.AO[alt_index]
+                        alt_index = [str(r) for r in crick_sample.site.ALT].index('A')
+                        nt_counts['G'] += crick_sample.data.AO[alt_index]
                     except ValueError:
                         pass
                     except TypeError:
                         pass
             if ref_base == 'A':
                 #Add watson record reference observations as these are never disputed.
-                nt_counts['A'] += watson_record.data.RO
+                nt_counts['A'] += watson_sample.data.RO
                 if 'G' not in alt_records_watson:
                     #no evidenve for G presence is available
-                    nt_counts['A'] += crick_record.data.RO
+                    nt_counts['A'] += crick_sample.data.RO
 
             if ref_base == 'T':
                 #Add Crick record reference observations as these are never disputed.
-                nt_counts['T'] += crick_record.data.RO
+                nt_counts['T'] += crick_sample.data.RO
                 if 'C' not in alt_records_crick:
                     #if there is no C allele called on the crick allele than All T observations are legit
-                    nt_counts['T'] += watson_record.data.RO
+                    nt_counts['T'] += watson_sample.data.RO
 
             alt_records = []
-            # if type(watson_record.data.AO) == type([]):
+            # if type(watson_sample.data.AO) == type([]):
             #     alt_records += alt_records_watson
-            # if type(crick_record.data.AO) == type([]):
+            # if type(crick_sample.data.AO) == type([]):
             #     alt_records += alt_records_crick
             str_alt_records_watson = [str(r) for r in alt_records_watson]
             str_alt_records_crick = [str(r) for r in alt_records_crick]
@@ -994,110 +999,102 @@ class CallBase(object):
                     try:
                         alt_records.append(vcf.model._Substitution('A'))
                     except AttributeError:
-                        pass
+                        return {}
                 else:
-                    alt_records = None
+                    return {}
             elif 'A' in str_alt_records_watson:
                 #A was not seen in alt_record watson whereas it should have been. invalidate call
-                alt_records = None
+                return {}
             if 'T' in str_alt_records_watson:
                 if 'C' in str_alt_records_crick and 'T' not in str_alt_records_crick:
                     #DO not add T as alt observation as it can only be a converted C
                     pass
                 #if T in alt_records_watson C or T must be in alt_record_crick
                 elif 'T' in str_alt_records_crick or ref_base in 'CT':
-                    try:
-                        alt_records.append(vcf.model._Substitution('T'))
-                    except AttributeError:
-                        pass
+                    alt_records.append(vcf.model._Substitution('T'))
                 else:
-                    alt_records = None
+                    return {}
             elif 'T' in str_alt_records_crick:
                 #T was not seen in alt_record watson whereas it should have been. invalidate call
-                alt_records = None
+                return {}
             if 'C' in str_alt_records_crick:
                 #if C in alt_records_crick, T or C should be in REF or ALT records watson
                 if 'T' in str_alt_records_watson or 'C' in str_alt_records_watson or ref_base in 'CT':
-                    try:
-                        alt_records.append(vcf.model._Substitution('C'))
-                    except AttributeError:
-                        pass
+                    alt_records.append(vcf.model._Substitution('C'))
                 else:
                     alt_records = None
             elif 'C' in str_alt_records_watson:
-                alt_records = None
+                return {}
                 #C was not seen in alt_record_crick whereas it should have been. invalidate call
             if 'G' in str_alt_records_watson:
                 #if G in alt_records_watson, G or A should be in REF or ALT records watson
                 if 'A' in str_alt_records_crick or 'G' in str_alt_records_crick or ref_base in 'GA':
-                    try:
-                        alt_records.append(vcf.model._Substitution('G'))
-                    except AttributeError:
-                        pass
+                    alt_records.append(vcf.model._Substitution('G'))
                 else:
-                    alt_records = None
+                    return {}
             elif 'G' in str_alt_records_crick:
                 #G was not seen in alt_record_crick whereas it should have been. invalidate call
-                alt_records = None
-            if alt_records == None:
                 return {}
+
+            #only non conflicting alleles are present in alt_records
+
             for nt in convert_dict['watson'].keys():
                 #only process records that exist in either the watson or crick alt site
                 if nt not in alt_records:
                     continue
                 try:
-                    watson_alt_index = [str(r) for r in watson_record.site.ALT].index(nt)
+                    watson_alt_index = [str(r) for r in watson_sample.site.ALT].index(nt)
                 except ValueError:
                     watson_alt_index = None
                 try:
-                    crick_alt_index = [str(r) for r in crick_record.site.ALT].index(nt)
+                    crick_alt_index = [str(r) for r in crick_sample.site.ALT].index(nt)
                 except ValueError:
                     crick_alt_index = None
                 watson_process = convert_dict['watson'][nt]
                 crick_process = convert_dict['crick'][nt]
-                if nt == 'G' and crick_process == 'NA' and watson_record.data.RO != 0:
+                if nt == 'G' and crick_process == 'NA' and watson_sample.data.RO != 0:
                     crick_process = 'NU'
                 #NU = non-convert and use. No conversion is needed
                 #NA = Non available for combined call
                 #CU = convert and use. This means that if we are looking for evidence of C in watson we might
                 #actually have to be looking for C and T combined. This is of course dependent on C not being in crick.
                 if watson_process == 'NA':
-                    if nt in [str(r) for r in crick_record.site.ALT]:
-                        nt_counts[nt] += crick_record.data.AO[crick_alt_index]
+                    if nt in [str(r) for r in crick_sample.site.ALT]:
+                        nt_counts[nt] += crick_sample.data.AO[crick_alt_index]
                     continue
                 elif crick_process == 'NA':
-                    if nt in [str(r) for r in watson_record.site.ALT]:
-                        nt_counts[nt] += watson_record.data.AO[watson_alt_index]
+                    if nt in [str(r) for r in watson_sample.site.ALT]:
+                        nt_counts[nt] += watson_sample.data.AO[watson_alt_index]
                     continue
                 elif watson_process == crick_process and watson_process == 'NU':
                     #both allelic observations can be used without a problem
-                    if nt in [str(r) for r in watson_record.site.ALT]:
-                        nt_counts[nt] += watson_record.data.AO[watson_alt_index]
-                    if nt in [str(r) for r in crick_record.site.ALT]:
-                        nt_counts[nt] += crick_record.data.AO[crick_alt_index]
+                    if nt in [str(r) for r in watson_sample.site.ALT]:
+                        nt_counts[nt] += watson_sample.data.AO[watson_alt_index]
+                    if nt in [str(r) for r in crick_sample.site.ALT]:
+                        nt_counts[nt] += crick_sample.data.AO[crick_alt_index]
                 elif watson_process == 'CU' and crick_process == 'NU':
                     if watson_alt_index != None or crick_alt_index != None:
                         #we have an observation in watson which could be a SNP or a methylation polymorphism.
                         #check if alternate allele is in crick.
                         if nt in 'CT':
-                            if 'C' in crick_record.site.ALT:
-                                c_index = [str(r) for r in crick_record.site.ALT].index('C')
-                                c_count = crick_record.data.AO[c_index]
-                                if c_count / float(crick_record.data.DP) > 0.05:
+                            if 'C' in crick_sample.site.ALT:
+                                c_index = [str(r) for r in crick_sample.site.ALT].index('C')
+                                c_count = crick_sample.data.AO[c_index]
+                                if c_count / float(crick_sample.data.DP) > 0.05:
                                     #we cannot assume that the T observation in watson is not a converted C.
                                     #only call the T in crick
                                     if crick_alt_index:
-                                        nt_counts[nt] += crick_record.data.AO[crick_alt_index]
-                                    if 'T' not in crick_record.site.ALT and 'T' in watson_record.site.ALT:
+                                        nt_counts[nt] += crick_sample.data.AO[crick_alt_index]
+                                    if 'T' not in crick_sample.site.ALT and 'T' in watson_sample.site.ALT:
                                         #'T' is converted C from watson. Add for SNP count here in combined allele
-                                        t_index = [str(r) for r in watson_record.site.ALT].index('T')
-                                        nt_counts[nt] += watson_record.data.AO[t_index]
+                                        t_index = [str(r) for r in watson_sample.site.ALT].index('T')
+                                        nt_counts[nt] += watson_sample.data.AO[t_index]
                                     continue
                             #C Allele is not present in crick record, no evidence for a SNP on this position.
                             #Assume that T count is legible T, used counts from both watson and crick here
-                            nt_counts[nt] += watson_record.data.AO[watson_alt_index]
+                            nt_counts[nt] += watson_sample.data.AO[watson_alt_index]
                             if crick_alt_index != None:
-                                nt_counts[nt] += crick_record.data.AO[crick_alt_index]
+                                nt_counts[nt] += crick_sample.data.AO[crick_alt_index]
                         elif nt not in 'CT':
                             print nt
                             raise FloatingPointError("Seen wrong nucleotide when assuming T")
@@ -1109,24 +1106,24 @@ class CallBase(object):
                         #we have an observation in crick which could be a SNP or a methylation polymorphism.
                         #check if alternate allele is in watson.
                         if nt in 'AG':
-                            if 'G' in watson_record.site.ALT:
-                                g_index = [str(r) for r in watson_record.site.ALT].index('G')
-                                g_count = watson_record.data.AO[g_index]
-                                if g_count / float(watson_record.data.DP) > 0.05:
+                            if 'G' in watson_sample.site.ALT:
+                                g_index = [str(r) for r in watson_sample.site.ALT].index('G')
+                                g_count = watson_sample.data.AO[g_index]
+                                if g_count / float(watson_sample.data.DP) > 0.05:
                                     #we cannot assume that the T observation in crick is not a converted C.
                                     #only call the T in watson
                                     if watson_alt_index != None :
-                                        nt_counts[nt] += watson_record.data.AO[watson_alt_index]
-                                    if 'A' not in watson_record.site.ALT and 'A' in crick_record.site.ALT:
+                                        nt_counts[nt] += watson_sample.data.AO[watson_alt_index]
+                                    if 'A' not in watson_sample.site.ALT and 'A' in crick_sample.site.ALT:
                                         #'A' is converted G from crick. Add for SNP count here in combined allele
-                                        a_index = [str(r) for r in crick_record.site.ALT].index('A')
-                                        nt_counts[nt] += crick_record.data.AO[a_index]
+                                        a_index = [str(r) for r in crick_sample.site.ALT].index('A')
+                                        nt_counts[nt] += crick_sample.data.AO[a_index]
                                     continue
                             #C Allele is not present in watson record, no evidence for a SNP on this position.
                             #Assume that T count is legible T, used counts from both crick and watson here
-                            nt_counts[nt] += crick_record.data.AO[crick_alt_index]
+                            nt_counts[nt] += crick_sample.data.AO[crick_alt_index]
                             if watson_alt_index:
-                                nt_counts[nt] += watson_record.data.AO[watson_alt_index]
+                                nt_counts[nt] += watson_sample.data.AO[watson_alt_index]
                             continue
                         elif nt not in 'AG':
                             print nt
@@ -1160,6 +1157,7 @@ class CallBase(object):
         #     return out_prim
 
     def filter_snps(self):
+        #TODO rename method to something more logical.
         # Sets all the "snp" calles to None, TODO: if filter_snps is finished, this can be removed
         for key in self.watson_file.samples:
             self.processed_samples[key]['snp'] = None
@@ -1172,6 +1170,7 @@ class CallBase(object):
         if min([self.watson_record.INFO['DP'], self.crick_record.INFO['DP']]) == 0:
             return None
         #Check if genotypes are already called
+        #TODO: simplify always called if ref in C/G?
         genotypes_called = None
         for sample in self.processed_samples:
             methylation_record = self.processed_samples[sample]['methylated']
@@ -1191,9 +1190,11 @@ class CallBase(object):
             # NU = non-convert and use. No conversion is needed
             # NA = Non available for combined call
             # CU = convert and use. Conversion is always T>C for Watson and A>G for Crick
+            #TODO: make third category CNU for C and G only use converted and non converted observations
+            #TODO: make conditional statement in dictionary directly
             if ref_base == "C":
                 convert_dict = {'watson':{'A':'NU','T':'NA','G':'NU'},
-                                'crick' :{'A':'CU','T':'NU','G':'NU'}}
+                                'crick' :{'A':'CU','T':'NU','G':'CU'}}
             elif ref_base == "T":
                 convert_dict = {'watson':{'A':'NU','C':'NA','G':'NU'},
                                 'crick' :{'A':'CU','C':'NU','G':'CU'}}
