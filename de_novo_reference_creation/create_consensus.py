@@ -60,7 +60,7 @@ def make_ref2(args):
                     break
             out_seq = ''
             count +=1
-            if not count%1000:
+            if not count%100000:
                 print count
             for wb, cb in izip(w[1], c[1]):
                 if wb == cb:
