@@ -158,8 +158,8 @@ def parse_vcf(args):
             call_base.processed_samples = {key: {'methylated': None,'snp': None}
                                            for key in call_base.watson_file.samples}
 
-            #if call_base.watson_record.CHROM == '2':
-            #    break
+            if call_base.watson_record.CHROM == '1000':
+                break
 
             #TODO If there are no SNP's in the cluster/chromosome, the igv file needs to be written without a sliding window.
             old_chrom = records[0].CHROM
@@ -700,7 +700,7 @@ class CallBase(object):
                 AD_input = self.combine_fw_reverse(sample.data.ADF,sample.data.ADR)
             else:
                 AD_input = sample.data.AD
-            for pos,nt in enumerate(record.alleles):
+            for pos, nt in enumerate(record.alleles):
                 try:
                     count = AD_input[pos]
                 except TypeError:
@@ -1274,7 +1274,6 @@ class CallBase(object):
                 if DP == 0:
                     GT = "./."
                 elif RO == DP:
-                    # TODO: Check if true in all SNP-calls
                     # If the reference observations are equal to the total depth there is no SNP.
                     empty_model = vcf.model._Call(site_obj,
                     sample, tuple([None]*len(site_obj.FORMAT.split(':'))))
