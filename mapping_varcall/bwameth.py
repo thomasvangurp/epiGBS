@@ -42,7 +42,7 @@ def checkX(cmd):
     else:
         raise Exception("executable for '%s' not found" % cmd)
 
-checkX('samtools')
+checkX('samtools_old')
 checkX('bwa')
 
 class BWAMethException(Exception): pass
@@ -279,16 +279,16 @@ def as_bam(pfile, fa, prefix, calmd=False, set_as_failed=None):
     set_as_failed: None, 'f', or 'r'. If 'f'. Reads mapping to that strand
                       are given the sam flag of a failed QC alignment (0x200).
     """
-    view = "samtools view -bS - | samtools sort -m 2415919104 - "
+    view = "samtools_old view -bS - | samtools_old sort -m 2415919104 - "
     if calmd:
         cmds = [
             view + "{bam}.tmp",
-            "samtools calmd -AbEr {bam}.tmp.bam {fa} > {bam}.bam 2>/dev/null",
+            "samtools_old calmd -AbEr {bam}.tmp.bam {fa} > {bam}.bam 2>/dev/null",
             "rm {bam}.tmp.bam"]
     else:
         cmds = [view + "{bam}"]
 
-    cmds.append("samtools index {bam}.bam")
+    cmds.append("samtools_old index {bam}.bam")
     cmds = [c.format(bam=prefix, fa=fa) for c in cmds]
 
     #sys.stderr.write("writing to:\n%s\n" % cmds[0])
@@ -461,7 +461,7 @@ def tabulate_main(args):
     a = p.parse_args(args)
     assert os.path.exists(a.reference)
     if not os.path.exists(a.reference + ".fai"):
-        sys.stderr.write("ERROR: run 'samtools faidx %s' before tabulation\n"
+        sys.stderr.write("ERROR: run 'samtools_old faidx %s' before tabulation\n"
                          % a.reference)
         sys.exit(1)
     trim = list(map(int, a.trim.split(",")))
