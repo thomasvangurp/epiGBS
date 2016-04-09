@@ -10,16 +10,8 @@ import argparse
 import subprocess
 import tempfile
 import os
-import shutil
-from distutils.spawn import find_executable
-from Bio import SeqIO
 import gzip
-# usearch = "usearch"
-# seqtk = "seqtk"
-# pear = "/mnt/data/tools/pear_merge/default/pear"
-# mergeBSv3 = "~/epiGBS/mergeBSv3.py"
-# create_consensus = "~/epiGBS/create_consensus.py"
-# vcfutils = "~/epiGBS/vcfutils.pl"
+
 origWD = os.getcwd()
 os.chdir(origWD)
 
@@ -234,7 +226,7 @@ def trim_and_zip(in_files,args):
     else:
         file_out = '_'.join(args.watson_forward.split('_')[:-1])+'.unassembled.watson.R1.trimmed.fq.gz'
     in_files['trimmed']['watson_R1'] = file_out
-    cmd = [seqtk + ' trimfq -b 4 %s |pigz -c > %s'%(file_in,file_out)]
+    cmd = [seqtk + ' trimfq -b 4 %s |gzcat -c > %s'%(file_in,file_out)]
     run_subprocess(cmd,args,log)
 
     log = 'Process single watson reads: reverse complement but no trimming required for R2 '
@@ -245,7 +237,7 @@ def trim_and_zip(in_files,args):
         file_out = '_'.join(args.watson_reverse.split('_')[:-1])+'.unassembled.watson.R2.fq.gz'
     in_files['trimmed']['watson_R2'] = file_out
     #Take reverse complement as pear outputs R2 in reverse complement
-    cmd = [seqtk + ' seq %s |%s seq -r - |pigz -c > %s'%(file_in,seqtk,file_out)]
+    cmd = [seqtk + ' seq %s |%s seq -r - |gzcat -c > %s'%(file_in,seqtk,file_out)]
     run_subprocess(cmd,args,log)
 
     log = 'Process single crick reads: no trimming required for R1'
@@ -255,7 +247,7 @@ def trim_and_zip(in_files,args):
     else:
         file_out = '_'.join(args.crick_forward.split('_')[:-1])+'.unassembled.crick.R1.fq.gz'
     in_files['trimmed']['crick_R1'] = file_out
-    cmd = [seqtk + ' seq %s |pigz -c >> %s'%(file_in,file_out)]
+    cmd = [seqtk + ' seq %s |gzcat -c >> %s'%(file_in,file_out)]
     run_subprocess(cmd,args,log)
 
     log = 'Process single crick reads: reverse complement an trim first 4 of R2'
@@ -266,7 +258,7 @@ def trim_and_zip(in_files,args):
         file_out = '_'.join(args.crick_reverse.split('_')[:-1])+'.unassembled.crick.R2.trimmed.fq.gz'
     in_files['trimmed']['crick_R2'] = file_out
     #Take reverse complement as pear outputs R2 in reverse complement
-    cmd = [seqtk + ' trimfq -e 4 %s |%s seq -r - |pigz -c >> %s'%(file_in,seqtk,file_out)]
+    cmd = [seqtk + ' trimfq -e 4 %s |%s seq -r - |gzcat -c >> %s'%(file_in,seqtk,file_out)]
     run_subprocess(cmd,args,log)
 
     #Process merged files
@@ -277,7 +269,7 @@ def trim_and_zip(in_files,args):
     else:
         file_out = '_'.join(args.watson_forward.split('_')[:-1])+'.assembled.watson.trimmedR1.fq.gz'
     in_files['trimmed']['watson_merged'] = file_out
-    cmd = [seqtk + ' trimfq -b 4 %s |pigz -c > %s'%(file_in,file_out)]
+    cmd = [seqtk + ' trimfq -b 4 %s |gzcat -c > %s'%(file_in,file_out)]
     run_subprocess(cmd,args,log)
 
     log = 'Process merged crick reads: Trim first 4 bases of R2'
@@ -287,7 +279,7 @@ def trim_and_zip(in_files,args):
     else:
         file_out = '_'.join(args.crick_forward.split('_')[:-1])+'.assembled.crick.trimmedR2.fq.gz'
     in_files['trimmed']['crick_merged'] = file_out
-    cmd = [seqtk + ' trimfq -e 4 %s |pigz -c >> %s'%(file_in,file_out)]
+    cmd = [seqtk + ' trimfq -e 4 %s |gzcat -c >> %s'%(file_in,file_out)]
     run_subprocess(cmd,args,log)
 
     return in_files
