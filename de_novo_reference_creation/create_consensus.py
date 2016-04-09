@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 from Bio import SeqIO
 from itertools import izip
-import pysam
 import argparse
 
 def parse_args():
@@ -18,23 +17,6 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-
-
-
-def watson_crick_count(args, region):
-    """Gets total count of watson and crick"""
-    bam = pysam.Samfile(args.bam, 'rb')
-    reads = bam.fetch(region)
-    count_dict = {}
-    for read in reads:
-        count = int(read.qname.rstrip(';').split('=')[-1])
-        type = read.tags[-1][-1]
-        try:
-            count_dict[type]+=count
-        except KeyError:
-             count_dict[type]=count
-    str_out = ";wats_cov:%s;crick_cov:%s"%(count_dict['watson'], count_dict['crick'])
-    return str_out
 
 def make_ref2(args):
     """"Make a concensus from watson and crick"""
@@ -60,7 +42,7 @@ def make_ref2(args):
                     break
             out_seq = ''
             count +=1
-            if not count%1000:
+            if not count%100000:
                 print count
             for wb, cb in izip(w[1], c[1]):
                 if wb == cb:
@@ -75,7 +57,6 @@ def make_ref2(args):
                     out_seq += wb
                 else:
                     out_seq += 'N'
-            # str_out = watson_crick_count(args, w[0])
             record_out = '>%s\n%s\n'%(w[0],out_seq)
             out.write(record_out)
     except ValueError:
