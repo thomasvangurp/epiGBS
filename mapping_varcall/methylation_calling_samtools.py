@@ -831,7 +831,7 @@ class CallBase(object):
             # Assigning the right alt base to the records.
             alt_watson = watson_sample.gt_bases.split('/')[1]
             alt_crick = crick_sample.gt_bases.split('/')[1]
-        
+
             sample_name = watson_sample.sample
             #TODO: move SNP calling to separate algorithm.
             if ref_base == 'C':
@@ -901,8 +901,8 @@ class CallBase(object):
                     self.processed_samples[sample_name]['methylated'] = watson_sample
         return 1
 
-    def combine_snp_record(self,watson_sample, crick_sample, convert_dict):
-        #TODO: combines samples, not record
+    def combine_sample_snp_count_watson_crick(self,watson_sample, crick_sample, convert_dict):
+        #TODO: rename method to combine_sample_snp_count_watson_crick
         """Combined SNP calls into one record taking into account expected bisulfite conversions"""
         if not watson_sample.called:
             return None
@@ -1208,7 +1208,7 @@ class CallBase(object):
                 #Base is N
                 #TODO: check if we cannot do some basecalling here.
                 continue
-            combined_count = self.combine_snp_record(watson_sample,crick_sample,convert_dict)
+            combined_count = self.combine_sample_snp_count_watson_crick(watson_sample,crick_sample,convert_dict)
             self.processed_samples[sample_name]["snp"] = (combined_count,watson_sample,crick_sample)
 
         self.call_SNPs()
@@ -1275,13 +1275,7 @@ class CallBase(object):
                 if DP == 0:
                     GT = "./."
                 elif RO == DP:
-                    # TODO: Check if true in all SNP-calls
-                    # If the reference observations are equal to the total depth there is no SNP.
-                    empty_model = vcf.model._Call(site_obj,
-                    sample, tuple([None]*len(site_obj.FORMAT.split(':'))))
-                    samples_out.append(empty_model)
-                    continue
-                    # GT = "0/0"
+                    GT = "0/0"
                 elif RO > max(AO):
                     if len(AO) == 1:
                         GT = "0/1"
