@@ -32,7 +32,7 @@ dependencies['seqtk'] = '1.0-r31'
 dependencies['pear'] = 'v0.9.7'
 dependencies['pigz'] = ''
 
-usearch = "usearch_8.0.1409_i86osx32"
+usearch = "usearch"#_8.0.1409_i86osx32"
 vsearch = "vsearch"
 seqtk = "seqtk"
 pear = "pear"
