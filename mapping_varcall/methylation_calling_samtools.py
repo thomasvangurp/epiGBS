@@ -910,7 +910,9 @@ class CallBase(object):
                     self.processed_samples[sample_name]['methylated'] = watson_sample
         return 1
 
-    def combine_snp_record(self, watson_sample, crick_sample, convert_dict):
+    def combine_sample_snp_count_watson_crick(self,watson_sample, crick_sample, convert_dict):
+        #TODO: rename method to combine_sample_snp_count_watson_crick
+
         """Combined SNP calls into one record taking into account expected bisulfite conversions"""
         # TODO: combines samples, not record
         # If there are no calls for either Watson and Crick, the SNP cannot be determined.
@@ -1229,6 +1231,7 @@ class CallBase(object):
                 continue
             combined_count = self.combine_snp_record(watson_sample, crick_sample, convert_dict)
             self.processed_samples[sample_name]["snp"] = (combined_count, watson_sample, crick_sample)
+
 
         self.call_SNPs()
         return 1

@@ -10,16 +10,8 @@ import argparse
 import subprocess
 import tempfile
 import os
-import shutil
-from distutils.spawn import find_executable
-from Bio import SeqIO
 import gzip
-# usearch = "usearch"
-# seqtk = "seqtk"
-# pear = "/mnt/data/tools/pear_merge/default/pear"
-# mergeBSv3 = "~/epiGBS/mergeBSv3.py"
-# create_consensus = "~/epiGBS/create_consensus.py"
-# vcfutils = "~/epiGBS/vcfutils.pl"
+
 origWD = os.getcwd()
 os.chdir(origWD)
 
@@ -32,7 +24,7 @@ dependencies['seqtk'] = '1.0-r31'
 dependencies['pear'] = 'v0.9.7'
 dependencies['pigz'] = ''
 
-usearch = "usearch_8.0.1409_i86osx32"
+usearch = "usearch"#_8.0.1409_i86osx32"
 vsearch = "vsearch"
 seqtk = "seqtk"
 pear = "pear"
@@ -234,7 +226,7 @@ def trim_and_zip(in_files,args):
     else:
         file_out = '_'.join(args.watson_forward.split('_')[:-1])+'.unassembled.watson.R1.trimmed.fq.gz'
     in_files['trimmed']['watson_R1'] = file_out
-    cmd = [seqtk + ' trimfq -b 4 %s |pigz -c > %s'%(file_in,file_out)]
+    cmd = [seqtk + ' trimfq -b 4 %s |gzcat -c > %s'%(file_in,file_out)]
     run_subprocess(cmd,args,log)
 
     log = 'Process single watson reads: reverse complement but no trimming required for R2 '
@@ -245,7 +237,7 @@ def trim_and_zip(in_files,args):
         file_out = '_'.join(args.watson_reverse.split('_')[:-1])+'.unassembled.watson.R2.fq.gz'
     in_files['trimmed']['watson_R2'] = file_out
     #Take reverse complement as pear outputs R2 in reverse complement
-    cmd = [seqtk + ' seq %s |%s seq -r - |pigz -c > %s'%(file_in,seqtk,file_out)]
+    cmd = [seqtk + ' seq %s |%s seq -r - |gzcat -c > %s'%(file_in,seqtk,file_out)]
     run_subprocess(cmd,args,log)
 
     log = 'Process single crick reads: no trimming required for R1'
@@ -255,7 +247,7 @@ def trim_and_zip(in_files,args):
     else:
         file_out = '_'.join(args.crick_forward.split('_')[:-1])+'.unassembled.crick.R1.fq.gz'
     in_files['trimmed']['crick_R1'] = file_out
-    cmd = [seqtk + ' seq %s |pigz -c >> %s'%(file_in,file_out)]
+    cmd = [seqtk + ' seq %s |gzcat -c >> %s'%(file_in,file_out)]
     run_subprocess(cmd,args,log)
 
     log = 'Process single crick reads: reverse complement an trim first 4 of R2'
@@ -266,7 +258,7 @@ def trim_and_zip(in_files,args):
         file_out = '_'.join(args.crick_reverse.split('_')[:-1])+'.unassembled.crick.R2.trimmed.fq.gz'
     in_files['trimmed']['crick_R2'] = file_out
     #Take reverse complement as pear outputs R2 in reverse complement
-    cmd = [seqtk + ' trimfq -e 4 %s |%s seq -r - |pigz -c >> %s'%(file_in,seqtk,file_out)]
+    cmd = [seqtk + ' trimfq -e 4 %s |%s seq -r - |gzcat -c >> %s'%(file_in,seqtk,file_out)]
     run_subprocess(cmd,args,log)
 
     #Process merged files
@@ -277,7 +269,7 @@ def trim_and_zip(in_files,args):
     else:
         file_out = '_'.join(args.watson_forward.split('_')[:-1])+'.assembled.watson.trimmedR1.fq.gz'
     in_files['trimmed']['watson_merged'] = file_out
-    cmd = [seqtk + ' trimfq -b 4 %s |pigz -c > %s'%(file_in,file_out)]
+    cmd = [seqtk + ' trimfq -b 4 %s |gzcat -c > %s'%(file_in,file_out)]
     run_subprocess(cmd,args,log)
 
     log = 'Process merged crick reads: Trim first 4 bases of R2'
@@ -287,7 +279,7 @@ def trim_and_zip(in_files,args):
     else:
         file_out = '_'.join(args.crick_forward.split('_')[:-1])+'.assembled.crick.trimmedR2.fq.gz'
     in_files['trimmed']['crick_merged'] = file_out
-    cmd = [seqtk + ' trimfq -e 4 %s |pigz -c >> %s'%(file_in,file_out)]
+    cmd = [seqtk + ' trimfq -e 4 %s |gzcat -c >> %s'%(file_in,file_out)]
     run_subprocess(cmd,args,log)
 
     return in_files
@@ -301,7 +293,7 @@ def dereplicate_reads(in_files,args):
             file_in = in_files[strand][name]
             file_out = '.'.join(file_in.split('.')[:-2]) + '.derep.' + file_in.split('.')[-2]
             in_files[strand][name] = [file_in]
-            cmd = [vsearch+' -derep_fulllength %s -sizeout -minuniquesize 2 -output %s'%(file_in,file_out)]
+            cmd = [vsearch +' -derep_fulllength %s -sizeout -minuniquesize 2 -output %s'%(file_in,file_out)]
             log = "Dereplicate full_length of %s using vsearch"%(strand)
             run_subprocess(cmd,args,log)
             name_out = name + "_derep"
@@ -341,19 +333,21 @@ def combine_and_convert(in_files,args):
     return in_files
 
 def make_uc(in_files,args):
-    """run vsearch to create uc file"""
-    #run vsearch to create uc file
+    """run usearch to create uc file"""
+    #run usearch to create uc file
     out_CTGA = in_files['combined']["merged_combined_CTGA"]
     merged_uc = tempfile.NamedTemporaryFile(suffix=".uc",prefix='derep_merged',dir=args.tmpdir,delete=False)
     joined_uc = tempfile.NamedTemporaryFile(suffix=".uc",prefix='derep_joined',dir=args.tmpdir,delete=False)
-    cmd = [vsearch + ' -derep_fulllength %s -strand both -uc %s'%
+    # TODO: vsearch does not give strand as output in uc. This is required for getting correct bam file
+    # check forum https://groups.google.com/forum/#!searchin/vsearch-forum/derep|sort:date/vsearch-forum/7N7r8odTT2I/z4T4aSe6DQAJ
+    cmd = [usearch + ' -derep_fulllength %s -strand both -uc %s'%
     (out_CTGA,merged_uc.name)]
     log = "Make uc output for merged reads"
     run_subprocess(cmd,args,log)
     in_files['combined']["derep_merged"] = merged_uc.name
     #TODO: do the same processing on the joined files here.
     out_CTGA = in_files['combined']["joined_combined_CTGA"]
-    cmd = [vsearch + ' -derep_fulllength %s -strand both -uc %s'%
+    cmd = [usearch + ' -derep_fulllength %s -strand both -uc %s'%
     (out_CTGA,joined_uc.name)]
     log = "Make uc output for joined reads"
     run_subprocess(cmd,args,log)
@@ -384,9 +378,9 @@ def make_sam(in_files,args):
     in_files['sam_out']['merged'] = merged_sam.name
     in_files['sam_out']['joined'] = joined_sam.name
     log = "create sorted and indexed bam for next step"
-    cmd1 = ["samtools view -Shb %s|samtools sort - %s;samtools index %s"%
+    cmd1 = ["samtools_old view -Shb %s|samtools_old sort - %s;samtools index %s"%
            (merged_sam.name,merged_sam.name.replace('.sam',''),merged_sam.name.replace('.sam','.bam'))]
-    cmd2 = ["samtools view -Shb %s|samtools sort - %s;samtools index %s"%
+    cmd2 = ["samtools_old view -Shb %s|samtools_old sort - %s;samtools index %s"%
            (joined_sam.name,joined_sam.name.replace('.sam',''),joined_sam.name.replace('.sam','.bam'))]
     run_subprocess(cmd1,args,log)
     run_subprocess(cmd2,args,log)
@@ -401,15 +395,15 @@ def split_output(in_files,args):
     crick_merged = tempfile.NamedTemporaryFile(suffix=".bam",prefix='crick_merged',dir=args.tmpdir,delete=False)
     watson_joined = tempfile.NamedTemporaryFile(suffix=".bam",prefix='watson_joined',dir=args.tmpdir,delete=False)
     crick_joined = tempfile.NamedTemporaryFile(suffix=".bam",prefix='crick_joined',dir=args.tmpdir,delete=False)
-    cmd1 = ["samtools view -h %s | tee >(grep '^@\|watson' |"%(in_files['sam_out']['merged'])+
-            "samtools view -Shb - |samtools sort -o - %s > %s )|"%
+    cmd1 = ["samtools_old view -h %s | tee >(grep '^@\|watson' |"%(in_files['sam_out']['merged'])+
+            "samtools_old view -Shb - |samtools_old sort -o - %s > %s )|"%
             (watson_merged.name.replace('.bam',''),watson_merged.name)+
-            "grep '^@\|crick' |samtools view -Shb - |samtools sort -o - %s > %s"%
+            "grep '^@\|crick' |samtools_old view -Shb - |samtools_old sort -o - %s > %s"%
             (crick_merged.name.replace('.bam',''),crick_merged.name)]
-    cmd2 = ["samtools view -h %s | tee >(grep '^@\|watson' |"%(in_files['sam_out']['joined'])+
-            "samtools view -Shb - |samtools sort -o - %s > %s )|"%
+    cmd2 = ["samtools_old view -h %s | tee >(grep '^@\|watson' |"%(in_files['sam_out']['joined'])+
+            "samtools_old view -Shb - |samtools_old sort -o - %s > %s )|"%
             (watson_joined.name.replace('.bam',''),watson_joined.name)+
-            "grep '^@\|crick' |samtools view -Shb - |samtools sort -o - %s > %s"%
+            "grep '^@\|crick' |samtools_old view -Shb - |samtools_old sort -o - %s > %s"%
             (crick_joined.name.replace('.bam',''),crick_joined.name)]
     log = "make watson sorted and indexed bam"
     run_subprocess(cmd1,args,log)
@@ -433,9 +427,9 @@ def get_consensus(in_files,args):
         consensus = tempfile.NamedTemporaryFile(suffix=".fq",prefix='consensus',dir=args.tmpdir)
         cons_sort = tempfile.NamedTemporaryFile(suffix=".fq",prefix='cons_sort',dir=args.tmpdir)
         #TODO: find way to make sure new samtools versions play well with this command trick..
-        cmd1 = ['samtools_old mpileup -u %s | bcftools view -cg - | %s vcf2fq |%s seq -A - > %s'%
+        cmd1 = ['samtools_old mpileup -u %s | bcftools_old view -cg - | %s vcf2fq |%s seq -A - > %s'%
                 (in_files['sam_out']['crick_%s'%type],vcfutils,seqtk,crick_out.name)]
-        cmd2 = ['samtools_old mpileup -u %s | bcftools view -cg - | %s vcf2fq |%s seq -A -  > %s'%
+        cmd2 = ['samtools_old mpileup -u %s | bcftools_old view -cg - | %s vcf2fq |%s seq -A -  > %s'%
                (in_files['sam_out']['watson_%s'%type],vcfutils,seqtk,watson_out.name)]
         log = "get consensus crick %s"%type
         run_subprocess(cmd1,args,log)

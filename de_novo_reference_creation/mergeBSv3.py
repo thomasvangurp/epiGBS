@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 "Merges Bisulphite reads by finding reciprocal pairs for PE watson / crick sequencing reads"
-import sys
-import Bio.SeqIO as SeqIO
 import pysam
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
