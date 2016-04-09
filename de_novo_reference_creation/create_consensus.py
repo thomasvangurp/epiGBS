@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-from Bio import SeqIO
 from itertools import izip
 import argparse
 
@@ -28,7 +27,7 @@ def make_ref2(args):
         while True:
             w = [watson.readline()[1:-1],watson.readline()[:-1].upper()]
             c = [crick.readline()[1:-1],crick.readline()[:-1].upper()]
-            if w == []:
+            if w[0] == '':
                 break
             while True:
                 if w[0] == c[0]:
@@ -42,7 +41,7 @@ def make_ref2(args):
                     break
             out_seq = ''
             count +=1
-            if not count%100000:
+            if not count%1000:
                 print count
             for wb, cb in izip(w[1], c[1]):
                 if wb == cb:
