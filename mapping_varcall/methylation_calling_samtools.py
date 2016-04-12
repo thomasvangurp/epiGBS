@@ -8,7 +8,6 @@
 # Modifications: None
 
 import vcf
-from vcf import utils
 from itertools import izip
 from Bio import SeqIO
 import argparse
@@ -45,7 +44,7 @@ def parse_args():
 def main():
     """Main function loop"""
     args = parse_args()
-    files = parse_vcf(args)
+    parse_vcf(args)
     zip_tabix(args)
 
 
@@ -107,21 +106,25 @@ def parse_vcf(args):
                     # Check if on same chromosome
                     if watson_record.CHROM != crick_record.CHROM:
                         # The one that has the lowest chromosome needs to get up with the higher one
-                        if watson_record.CHROM > crick_record.CHROM:
+                        if int(watson_record.CHROM) > int(crick_record.CHROM):
                             # Watson record is already on a higher chromosome
                             crick_record = crick_vcf.next()
+                            continue
                         else:
                             # Crick record is on a higher chromosome
                             watson_record = watson_vcf.next()
+                            continue
                     else:
                         # Check if the records are on the same position
                         if watson_record.POS != crick_record.POS:
                             if watson_record.POS > crick_record.POS:
                                 # Watson pos is already on a higher position
                                 crick_record = crick_vcf.next()
+                                continue
                             else:
                                 # Crick pos is on a higher position
                                 watson_record = watson_vcf.next()
+                                continue
                         else:
                             # They are on the same position and chromosome, assign to records
                             records = (watson_record, crick_record)
@@ -144,12 +147,16 @@ def parse_vcf(args):
                                     # TODO: methylation call records should only contain C/T or G/A
                                     return_code = call_base.methylation_calling()
                                     if not return_code:
+                                        watson_record = watson_vcf.next()
+                                        crick_record = crick_vcf.next()
                                         continue
 
                                 # Call SNP genotypes
                                 return_code = call_base.filter_snps()
 
                                 if not return_code:
+                                    watson_record = watson_vcf.next()
+                                    crick_record = crick_vcf.next()
                                     continue
 
                                 call_base.write_records()
@@ -157,13 +164,9 @@ def parse_vcf(args):
                                 call_base.processed_samples = {key: {'methylated': None,'snp': None}
                                                                for key in call_base.watson_file.samples}
 
-                                if call_base.watson_record.CHROM == '1000':
-                                    break
-
                                 # TODO If there are no SNP's in the cluster/chromosome,
                                 # the igv file needs to be written without a sliding window.
                                 old_chrom = records[0].CHROM
-
                             watson_record = watson_vcf.next()
                             crick_record = crick_vcf.next()
                 except StopIteration:
@@ -910,9 +913,7 @@ class CallBase(object):
                     self.processed_samples[sample_name]['methylated'] = watson_sample
         return 1
 
-    def combine_sample_snp_count_watson_crick(self,watson_sample, crick_sample, convert_dict):
-        #TODO: rename method to combine_sample_snp_count_watson_crick
-
+    def combine_sample_snp_count_watson_crick(self, watson_sample, crick_sample, convert_dict):
         """Combined SNP calls into one record taking into account expected bisulfite conversions"""
         # TODO: combines samples, not record
         # If there are no calls for either Watson and Crick, the SNP cannot be determined.
@@ -996,70 +997,86 @@ class CallBase(object):
                     nt_counts['T'] += watson_sample.data.RO
 
             alt_records = list()
-            # if type(watson_sample.data.AO) == type([]):
-            #     alt_records += alt_records_watson
-            # if type(crick_sample.data.AO) == type([]):
-            #     alt_records += alt_records_crick
-            str_alt_records_watson = map(str, alt_records_watson)
-            str_alt_records_crick = map(str, alt_records_crick)
+            possible_alleles = {
+                "A": (["G", None, 0], ["G", "G", 0], ["T", "T", 0], ["C", "C", 0], ["T", "C", 1]),
+                "T": ([None, "C", 1], ["C", "C", 0], ["A", "A", 0], ["G", "G", 0], ["G", "A", 0]),
+                "C": (["G", "G", 0], ["G", "A", 0], ["T", "T", 0], ["A", "A", 0]),
+                "G": (["C", "C", 0], ["T", "C", 1], ["A", "A", 0], ["T", "T", 0])
+            }
 
+            # TODO: Think of a method that includes Alt/Alt observations. 
+            if not alt_records_watson:
+                watson_allele = None
+            elif len(alt_records_watson) > 1:
+                watson_allele = str(watson_sample.site.ALT[watson_sample.data.AO.index(max(watson_sample.data.AO))])
+            else:
+                watson_allele = "".join(alt_records_watson)
+            if not alt_records_crick:
+                crick_allele = None
+            elif len(alt_records_crick) > 1:
+                crick_allele = str(crick_sample.site.ALT[crick_sample.data.AO.index(max(crick_sample.data.AO))])
+            else:
+                crick_allele = "".join(alt_records_crick)
 
-            # TODO: Make list of all possible alternative alleles
-            # Check if Watson and Crick alternative alleles contain valid information that is biological plausible
-            if 'A' in str_alt_records_crick:
-                # TODO: Check if 'A' is still an ALT observerion even though it is a converted G?
-                # Do not add A as an alt observation as it is a converted G. G could be stored.
-                if 'G' in str_alt_records_watson and 'A' not in str_alt_records_watson:
-                    alt_records.append(vcf.model._Substitution('G'))
-                # if A in alt_records_crick, A or G must be in alt_records_watson
-                elif 'A' in str_alt_records_watson:
-                    alt_records.append(vcf.model._Substitution('A'))
-                else:
-                    return dict()
-            elif 'A' in str_alt_records_watson:
-                # 'A' was not seen in alt_record crick where it should have been. invalidate call
-                return dict()
+            if any(alleles[:2] == [watson_allele, crick_allele] for alleles in possible_alleles[ref_base]):
+                for pos_allele in possible_alleles[ref_base]:
+                    if pos_allele[:2] == [watson_allele, crick_allele]:
+                        alt_records = list([watson_allele, crick_allele][pos_allele[2]])
+                        break
 
-            if 'T' in str_alt_records_watson:
-                # DO not add T as alt observation as it can only be a converted C. C could be stored.
-                if 'C' in str_alt_records_crick and 'T' not in str_alt_records_crick:
-                    alt_records.append(vcf.model._Substitution('C'))
-                # If T in alt_records_watson C or T must be in alt_record_crick
-                elif 'T' in str_alt_records_crick:
-                    alt_records.append(vcf.model._Substitution('T'))
-                else:
-                    return dict()
-            # T was not seen in alt_record watson whereas it should have been. invalidate call
-            elif 'T' in str_alt_records_crick:
-                return dict()
+            # # Check if Watson and Crick alternative alleles contain valid information that is biological plausible
+            # if 'A' in str_alt_records_crick:
+            #     # TODO: Check if 'A' is still an ALT observerion even though it is a converted G?
+            #     # Do not add A as an alt observation as it is a converted G. G could be stored.
+            #     if 'G' in str_alt_records_watson and 'A' not in str_alt_records_watson:
+            #         alt_records.append(vcf.model._Substitution('G'))
+            #     # if A in alt_records_crick, A or G must be in alt_records_watson
+            #     elif 'A' in str_alt_records_watson:
+            #         alt_records.append(vcf.model._Substitution('A'))
+            #     else:
+            #         return dict()
+            # elif 'A' in str_alt_records_watson:
+            #     # 'A' was not seen in alt_record crick where it should have been. invalidate call
+            #     return dict()
+            #
+            # if 'T' in str_alt_records_watson:
+            #     # DO not add T as alt observation as it can only be a converted C. C could be stored.
+            #     if 'C' in str_alt_records_crick and 'T' not in str_alt_records_crick:
+            #         alt_records.append(vcf.model._Substitution('C'))
+            #     # If T in alt_records_watson C or T must be in alt_record_crick
+            #     elif 'T' in str_alt_records_crick:
+            #         alt_records.append(vcf.model._Substitution('T'))
+            #     else:
+            #         return dict()
+            # # T was not seen in alt_record watson whereas it should have been. invalidate call
+            # elif 'T' in str_alt_records_crick:
+            #     return dict()
+            #
+            # if 'C' in str_alt_records_crick:
+            #     # If C in alt_records_crick, T should be in REF or ALT records watson
+            #     if 'T' in str_alt_records_watson or 'C' in str_alt_records_watson or ref_base == 'T':
+            #         alt_records.append(vcf.model._Substitution('C'))
+            #     else:
+            #         alt_records = None
+            # # C was not seen in alt_record_crick whereas it should have been. invalidate call
+            # elif 'C' in str_alt_records_watson:
+            #     return dict()
+            #
+            # if 'G' in str_alt_records_watson:
+            #     # if G in alt_records_watson, G or A should be in REF or ALT records watson
+            #     if 'A' in str_alt_records_crick or 'G' in str_alt_records_crick or ref_base in 'GA':
+            #         alt_records.append(vcf.model._Substitution('G'))
+            #     else:
+            #         return {}
+            # elif 'G' in str_alt_records_crick:
+            #     #G was not seen in alt_record_crick whereas it should have been. invalidate call
+            #     return {}
 
-            if 'C' in str_alt_records_crick:
-                # If C in alt_records_crick, T should be in REF or ALT records watson
-                if 'T' in str_alt_records_watson or 'C' in str_alt_records_watson or ref_base == 'T':
-                    alt_records.append(vcf.model._Substitution('C'))
-                else:
-                    alt_records = None
-            # C was not seen in alt_record_crick whereas it should have been. invalidate call
-            elif 'C' in str_alt_records_watson:
-                return dict()
-
-            if 'G' in str_alt_records_watson:
-                # if G in alt_records_watson, G or A should be in REF or ALT records watson
-                if 'A' in str_alt_records_crick or 'G' in str_alt_records_crick or ref_base in 'GA':
-                    alt_records.append(vcf.model._Substitution('G'))
-                else:
-                    return {}
-            elif 'G' in str_alt_records_crick:
-                #G was not seen in alt_record_crick whereas it should have been. invalidate call
-                return {}
-
-            #only non conflicting alleles are present in alt_records
+            # Only non conflicting alleles are present in alt_records
 
             for nt in convert_dict['watson'].keys():
-                if not alt_records:
-                    continue
-                #only process records that exist in either the watson or crick alt site
-                if nt not in alt_records:
+                # only process records that exist in either the watson or crick alt site
+                if not alt_records or nt not in alt_records:
                     continue
                 try:
                     watson_alt_index = [str(r) for r in watson_sample.site.ALT].index(nt)
@@ -1151,7 +1168,7 @@ class CallBase(object):
                         pass
             nt_out = {}
             DP = float(sum(nt_counts.values()))
-            for nt,count in nt_counts.items():
+            for nt, count in nt_counts.items():
                 try:
                     #TODO: set to parsable parameter
                     if count/DP > 0.05 and count > 1:
@@ -1229,7 +1246,7 @@ class CallBase(object):
                 # Base is N
                 # TODO: check if we cannot do some basecalling here.
                 continue
-            combined_count = self.combine_snp_record(watson_sample, crick_sample, convert_dict)
+            combined_count = self.combine_sample_snp_count_watson_crick(watson_sample, crick_sample, convert_dict)
             self.processed_samples[sample_name]["snp"] = (combined_count, watson_sample, crick_sample)
 
 
@@ -1309,7 +1326,7 @@ class CallBase(object):
                     if len (AO) == 1:
                         GT = "0/1"
                     else:
-                        allele_1, allele_2, = heapq.nlargest(2, AO)
+                        allele_1, allele_2 = heapq.nlargest(2, AO)
                         GT = str(AO.index(allele_1)) + "/" + str(AO.index(allele_2))
 
                 AD = [RO]
