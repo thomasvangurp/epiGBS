@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env pypy
 """
 map bisulfite converted reads to an insilico converted genome using bwa mem.
 A command to this program like:

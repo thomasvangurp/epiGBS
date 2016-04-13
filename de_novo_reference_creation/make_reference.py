@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env pypy
 __author__ = 'thomasvangurp'
 # Date created: 20/11/2014 (europe date)
 # Function: Pipeline for creation of reference

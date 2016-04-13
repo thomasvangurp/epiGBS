@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env pypy
 __author__ = 'thomasvangurp'
 # Date created: 22/11/2014 (europe date)
 # Function: Pipeline for mapping reads to reference
