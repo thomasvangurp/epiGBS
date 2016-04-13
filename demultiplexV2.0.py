@@ -123,61 +123,47 @@ def levenshtein(read,bc_set,enz_sites,mismatch, max_total_len):
     # for enz in enz_sites:
     #     if enz in short_sequence:
     #         short_sequence
-    for (start,bc) in sorted(bc_set,key=len)[::-1]:
+    for (start,bc) in sorted(bc_set,key=lambda i: len(i[1]),reverse=True):
         wobble = short_sequence[:start]
         if short_sequence[start:start+len(bc)] == bc:
             control_nt = short_sequence[start+len(bc)]
             strand = get_strand(control_nt)
             return bc,wobble,start,strand
-    # return None,None,None,None
-    #check if there is no longer barcode possible
-    check = 1
-    for enz_site in enz_sites:
-       try:
-           if short_sequence[start:].index(enz_site) == short_sequence[start:].rindex(enz_site):
-               #make the short sequence as short as it should be
-               # short_sequence = short_sequence[:short_sequence.rindex(enz_site)]
-               #we store enz_site for future reference and for looking for it
-               check = 0
-               break
-       except ValueError:
-           continue
-    if mismatch == 0 or check == 1:
-        return None,None,None,None
     matches = {}
-    for barcode in sorted(bc_set,key=len)[::-1]:
+    for barcode in sorted(bc_set,key=lambda i: len(i[1]),reverse=True):
         dist = []
-        if barcode[1] in short_sequence:
-            #this can happen if the wobble is shorter than it should be..
+        if barcode[1] in short_sequence[1:]:
+            #this can happen if the wobble is shorter than it should be. minimum  wobble length > 1
             index = short_sequence.index(barcode[1])
-            if short_sequence[index + len(barcode[1]):index + len(barcode[1])+4] not in enz_sites:
+            if short_sequence[index + len(barcode[1]):index + len(barcode[1])+len(enz_sites[0])] not in enz_sites:
                 break
             wobble = short_sequence[:index]
             control_nt = short_sequence[index+len(barcode[1])]
             strand = get_strand(control_nt)
             return barcode[1],wobble,index,strand
         for enz_site in enz_sites:
-            dist.append(Levenshtein.distance(short_sequence[barcode[0]:barcode[0]+len(barcode[1] + \
-                                                                                      enz_site)], barcode[1] + enz_site))
+            try:
+                part1 = short_sequence[barcode[0]:short_sequence.rindex(enz_site)+len(enz_site)]
+            except ValueError:
+                dist.append(100)
+                continue
+            part2 = barcode[1] + enz_site
+            dist.append(Levenshtein.distance(part1,part2))
         try:
             #get the enz site with the min distance
-            matches[min(dist)]+= [barcode, enz_sites[dist.index(min(dist))]]
+            matches[min(dist)] += [barcode, enz_sites[dist.index(min(dist))]]
         except KeyError:
-            matches[min(dist)] = [barcode, enz_site]
-        # try:
-        #     if matches[0] != []: #A perfect match has been found, return it straight away.
-        #        return matches[0][0], enz_site
-        # except KeyError:
-        #    continue
+            matches[min(dist)] = [barcode, enz_sites[dist.index(min(dist))]]
     try:
         best_match, enz_site = matches[min(matches.keys())]
     except ValueError:
         #there are multiple matches do not return these conflicting values.
         return None,None,None,None
     if min(matches.keys()) <= mismatch:
-        control_nt = short_sequence[start+len(best_match[1])]
+        #the first nucleotide of the enz_site is the control nucleotide
+        control_nt = matches[min(matches.keys())][1][0]
         strand = get_strand(control_nt)
-        return best_match,short_sequence[:3],start,strand
+        return best_match[1],short_sequence[:3],start,strand
         # return  best_match, enz_site
         # return  left_bc,wobble_left,left_start,control_left
     else:
@@ -314,11 +300,11 @@ def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
             seq1_out = open(os.path.join(opts.output, seq1_name), 'a')
             seq2_out = open(os.path.join(opts.output, seq2_name), 'a')
     if opts.reads1.endswith('.gz'):
-        nomatch1_out= gzip.open(opts.nomatch1,  "a")
-        nomatch2_out= gzip.open(opts.nomatch2, "a")
+        nomatch1_out= gzip.open(opts.nomatch1, "w")
+        nomatch2_out= gzip.open(opts.nomatch2, "w")
     else:
-        nomatch1_out= open(opts.nomatch1,  "a")
-        nomatch2_out= open(opts.nomatch2, "a")
+        nomatch1_out= open(opts.nomatch1,  "w")
+        nomatch2_out= open(opts.nomatch2, "w")
     seq = 0
     bc_set_left = set(k[0] for k in bc_dict.keys())
     bc_set_right = set(k[1] for k in bc_dict.keys())
@@ -346,7 +332,7 @@ def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
                 left_read +=  [seq1_handle.readline()]
                 right_read += [seq2_handle.readline()]
             except StopIteration:
-                brake
+                break
         left_bc,wobble_left,left_start,control_left = levenshtein(left_read, bc_set_left,enz_sites_left, opts.mismatch, max_bc_len_left)
         right_bc,wobble_right,right_start,control_right = levenshtein(right_read, bc_set_right,enz_sites_right, opts.mismatch, max_bc_len_right)
         if left_bc and right_bc:
@@ -358,7 +344,8 @@ def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
             if opts.addRG:
                 #determine if read is watson or crick.
                 try:
-                    SM_id = bc_dict[((left_start,left_bc),(right_start,right_bc))].Sample
+                    #TODO: fix hard-coded start of barcode
+                    SM_id = bc_dict[((3,left_bc),(3,right_bc))].Sample
                 except KeyError:
                     #This can only happen if the barcode is incorrectly read
                     continue
@@ -369,33 +356,31 @@ def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
                 else:
                     strand = 'NA'
                 RG_id = '%s_%s_%s'%(Flowcell,Lane,SM_id)
-                if wobble_left and wobble_right:
-                    wobble = wobble_left + "_" + wobble_right
-                    left_read[0] =  left_read[0].split(' ')[0].rstrip('\n') \
-                                    + '\tBC:Z:%s\tBC:Z:%s\tRG:Z:%s\tST:Z:%s\tRN:Z:%s\n'%(left_bc, right_bc, RG_id, strand, wobble)
-                    right_read[0] = right_read[0].split(' ')[0].rstrip('\n') \
-                                    + '\tBL:Z:%s\tBR:Z:%s\tRG:Z:%s\tST:Z:%s\tRN:Z:%s\n'%(left_bc,right_bc, RG_id, strand, wobble)
-                else:
-                    left_read[0] =  left_read[0].split(' ')[0].rstrip('\n') \
-                                    + '\tBC:Z:%s\tBC:Z:%s\tRG:Z:%s\tST:Z:%s\n'%(left_bc, right_bc, RG_id, strand)
-                    right_read[0] = right_read[0].split(' ')[0].rstrip('\n') \
-                                    + '\tBL:Z:%s\tBR:Z:%s\tRG:Z:%s\tST:Z:%s\n'%(left_bc,right_bc, RG_id, strand)
+                if wobble_left == '':
+                    wobble_left = 'NNN'
+                if wobble_right == '':
+                    wobble_right = 'NNN'
+                wobble = wobble_left + "_" + wobble_right
+                left_read[0] =  left_read[0].split(' ')[0].rstrip('\n') \
+                                + '\tBC:Z:%s\tBC:Z:%s\tRG:Z:%s\tST:Z:%s\tRN:Z:%s\n'%(left_bc, right_bc, RG_id, strand, wobble)
+                right_read[0] = right_read[0].split(' ')[0].rstrip('\n') \
+                                + '\tBL:Z:%s\tBR:Z:%s\tRG:Z:%s\tST:Z:%s\tRN:Z:%s\n'%(left_bc,right_bc, RG_id, strand, wobble)
             else:
                 id = left_read[0][:-1]
             if opts.delete:
                 #+1 because of control nucleotide after barcode
                 control_NT = 'C'
-                left_read[1] = left_read[1][len(wobble_left + left_bc + control_NT):]
-                left_read[3] = left_read[3][len(wobble_left + left_bc + control_NT):]
-                right_read[1] = right_read[1][len(wobble_right + right_bc + control_NT):]
-                right_read[3] = right_read[3][len(wobble_right + right_bc + control_NT):]
+                left_read[1] = left_read[1][left_start + len(left_bc + control_NT):]
+                left_read[3] = left_read[3][left_start + len(left_bc + control_NT):]
+                right_read[1] = right_read[1][right_start + len(right_bc + control_NT):]
+                right_read[3] = right_read[3][right_start + len( right_bc + control_NT):]
             if not opts.split:
                 seq1_out.write(''.join(left_read))
                 seq2_out.write(''.join(right_read))
             else:
                 #If splitting is activated, compression takes too long, disable!
-                output_location_1 = os.path.join(opts.output, "%s_%s_1.fastq"%(bc_dict[barcode], barcode))
-                output_location_2 = os.path.join(opts.output, "%s_%s_2.fastq"%(bc_dict[barcode], barcode))
+                output_location_1 = os.path.join(opts.output, "%s_%s_1.fastq"%(bc_dict[((3,left_bc),(3,right_bc))].Sample))
+                output_location_2 = os.path.join(opts.output, "%s_%s_2.fastq"%(bc_dict[((3,left_bc),(3,right_bc))].Sample))
                 output_handle_1 = open(output_location_1, 'a')
                 output_handle_2 = open(output_location_2, 'a')
                 output_handle_1.write(''.join(left_read))
@@ -404,6 +389,10 @@ def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
             #Barcode sequence was not recognized
             nomatch1_out.write(''.join(left_read))
             nomatch2_out.write(''.join(right_read))
+    seq1_out.close()
+    seq2_out.close()
+    nomatch1_out.close()
+    nomatch2_out.close()
     return bc_dict
 
 def parse_seq(opts, bc_sorted, bc_dict, Flowcell, Lane):
