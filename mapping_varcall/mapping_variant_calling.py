@@ -139,7 +139,7 @@ def run_bwameth(in_files,args):
         add = '|head -n %s'%(4*int(args.sequences))
     else:
         add = ''
-    cmd = ['bwameth.py -t %s -p %s --reference %s <(gunzip -c %s %s) NA'%
+    cmd = ['bwameth.py -t %s -p %s --reference %s <(pigz -cd %s %s) NA'%
            (args.threads,
             os.path.join(args.output_dir,'merged'),
             ref,
@@ -148,7 +148,7 @@ def run_bwameth(in_files,args):
     run_subprocess(cmd,args,log)
 
     log = "run bwameth for non-merged reads"
-    cmd = ['bwameth.py -t %s -p %s --reference %s <(gunzip -c %s %s) <(gunzip -c %s %s)'%
+    cmd = ['bwameth.py -t %s -p %s --reference %s <(pigz -cd %s %s) <(pigz -cd %s %s)'%
            (args.threads,
             os.path.join(args.output_dir,'pe'),
             ref,
@@ -181,9 +181,9 @@ def run_bwameth(in_files,args):
     log = "split in watson and crick bam file"
     cmd = ["samtools view -h %s |tee "%
            (os.path.join(args.output_dir,'combined.bam'))+
-           ">( grep '^@\|ST:Z:Watson' | samtools view -Shb - > %s)"%
+           ">( grep '^@\|ST:Z:Watson\|ST:Z:watson' | samtools_old view -Shb - > %s)"%
            (os.path.join(args.output_dir,'watson.bam'))+
-           "| grep '^@\|ST:Z:Crick' | samtools view -Shb - > %s"%
+           "| grep '^@\|ST:Z:Crick\|ST:Z:crick' | samtools_old view -Shb - > %s"%
            (os.path.join(args.output_dir,'crick.bam'))]
 
     run_subprocess(cmd,args,log)
@@ -251,6 +251,8 @@ def addRG(in_files,args):
 
 def remove_PCR_duplicates(in_files,args):
     """Remove PCR duplicates and non-paired PE-reads per cluster"""
+    #check if random tag is present in fastq file, otherwise do not perform function
+    # fastq_tags = open(in_files[''])
     for strand,bamfile in in_files['bam_out'].items():
         clusters = SeqIO.parse(open(args.reference),'fasta')
         handle = pysam.AlignmentFile(bamfile,'rb')
@@ -266,7 +268,7 @@ def remove_PCR_duplicates(in_files,args):
                 cluster_is_paired = False
             read_out = {}
             for read in reads:
-                tag = read.tags[-3][1]
+                id,tag = read.tags[-3]
                 sample = read.tags[-1][1]
                 AS = read.tags[1][1]
                 if not read.is_proper_pair and cluster_is_paired:
@@ -281,6 +283,9 @@ def remove_PCR_duplicates(in_files,args):
                     except KeyError:
                         read_out[sample][tag][read.qname] = AS
             #process read_out
+            if id != 'RN':
+                #random tag not yet implemented. return in_files and do not process further
+                return in_files
             reads = handle.fetch(cluster.id)
             for read in reads:
                 if not read.is_proper_pair and cluster_is_paired:
@@ -414,39 +419,49 @@ def run_Freebayes(in_files,args):
             stdout, stderr = p.communicate()
     return in_files
 
+def variant_calling_samtools(in_files,args):
+    """Do variant calling with freebayes"""
+    #run mpileup on watson bam file
+    in_files['vcf_out'] = {}
+    in_files['vcf_out']['watson'] = os.path.join(args.output_dir,'watson.vcf.gz')
+    in_files['vcf_out']['crick'] = os.path.join(args.output_dir,'crick.vcf.gz')
+
+    cmd = ["samtools mpileup --reference %s -gt DP,AD,INFO/AD"%(args.reference)+
+           " -d 10000000 -q 0 -Q 0 -vu %s"%(in_files['bam_out']['watson']) +
+           "|grep -v '^##contig='|pigz -c > %s"%(in_files['vcf_out']['watson'])]
+
+    log = "use samtools mpileup to get variant observation counts for watson"
+    run_subprocess(cmd, args, log)
+
+
+    cmd = ["samtools mpileup --reference %s -gt DP,AD,INFO/AD" % (args.reference) +
+           " -d 10000000 -q 0 -Q 0 -vu %s" % (in_files['bam_out']['crick']) +
+           "|grep -v '^##contig='|pigz -c > %s" % (in_files['vcf_out']['crick'])]
+
+    log = "use samtools mpileup to get variant observation counts for crick"
+    run_subprocess(cmd, args, log)
+    return in_files
+
 
 
 def methylation_calling(in_files,args):
     "run methylation calling script."
     log = ["Run methylation calling script"]
-    meth_calling = "/Users/thomasvangurp/Dropbox/Deenabio/Projects/nioo/methylation_calling.py"
-    cmd = [
-    "python %s"%meth_calling
-    +""" -r      %(reference)s\
-    -w      %(watson_vcf)s\
-    -c      %(crick_vcf)s\
-    -m      %(methylation_vcf)s\
-    -s      %(snp_vcf)s\
-    -heat   %(heatmap)s\
-    -methylation_called %(mastermeth)s\
-    -snp_called %(mastersnp)s"""%vars(args)]
+    cmd = ["methylation_calling_samtools.py" +
+           " -r %s"%(args.reference) +
+           " -w %s"%(in_files['vcf_out']['watson']) +
+           " -c %s"%(in_files['vcf_out']['crick']) +
+           " -m %s"%(os.path.join(args.output_dir,'methylation.vcf.gz')) +
+           " -s %s"%(os.path.join(args.output_dir,'snp.vcf.gz')) +
+           " -heat %s"%(os.path.join(args.output_dir,'heatmap.igv')) +
+           " -methylation_called %s"%(os.path.join(args.output_dir,'methylation.bed')) +
+           " -snp_called %s"%(os.path.join(args.output_dir,"snp.bed")) ]
     run_subprocess(cmd,args,log)
     return in_files
 
 def main():
     "Main function loop"
     args = parse_args()
-    test = 1
-    if test:
-        in_files = {}
-        in_files['bam_out'] = {'watson':
-       '/Users/thomasvangurp/epiGBS/Zwitserland/pilot_60/seq5U7ms_/Gal_mol/output_mapping/watson.bam',
-       'crick':'/Users/thomasvangurp/epiGBS/Zwitserland/pilot_60/seq5U7ms_/Gal_mol/output_mapping/crick.bam'}
-        # remove_PCR_duplicates(in_files,args)
-        in_files['header'] = '/Users/thomasvangurp/epiGBS/Zwitserland/pilot_60/seq5U7ms_/Gal_mol/output_mapping/header.sam'
-        files = run_Freebayes(in_files,args)
-        # files = methylation_calling(files,args)
-        sys.exit(0)
     #Make sure log is empty at start
     if os.path.isfile(args.log):
         os.remove(args.log)
@@ -458,10 +473,10 @@ def main():
     #TODO: PCR duplicate removal should work for reference genomes as well!
     files = remove_PCR_duplicates(files,args)
     #Step 3a use seqtk to trim merged and joined reads from enzyme recognition site
-    #TODO: implement faster variant calling with samtools mpileup
+    files = variant_calling_samtools(files, args)
     # files = run_Freebayes(files,args)
     #Step 4: Dereplicate all watson and crick reads
-    # files = methylation_calling(files,args)
+    files = methylation_calling(files,args)
     print 'done'
 if __name__ == '__main__':
     main()
