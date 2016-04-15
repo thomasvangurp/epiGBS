@@ -82,16 +82,14 @@ def convert_reads(fq1s, fq2s, out=sys.stdout):
         lt80 = 0
         for pair in izip(q1_iter, q2_iter):
             for read_i, (name, seq, _, qual) in enumerate(pair):
-                if not name:
+                if name == None or 'ST:Z:gbs' in name:
+                    #cache error when read2 is absent or read is GBS
                     continue
                 original_name = name[:-1].replace(' ','\t')
                 if name[:-1].split('\t')[-1] == 'ST:Z:crick':
                     convert_list = ['CT', 'GA'][::-1]
-                elif name[:-1].split('\t')[-1] == 'ST:Z:watson':
-                    convert_list = ['CT', 'GA']
                 else:
-                    break
-                if name is None: continue
+                    convert_list = ['CT', 'GA']
                 name = name.rstrip("\r\n").split(" ")[0]
                 if name.endswith(("_R1", "_R2")):
                     name = name[:-3]
@@ -105,8 +103,7 @@ def convert_reads(fq1s, fq2s, out=sys.stdout):
                 char_a, char_b = convert_list[read_i]
                 # keep original sequence as name.
                 name = "\t".join((original_name,
-                                "YS:Z:" + seq +
-                                "\tYC:Z:" + char_a + char_b + '\n'))
+                                "YS:Z:" + seq + '\n'))
                 seq = seq.replace(char_a, char_b)
                 out.write("".join((name, seq, "\n+\n", qual)))
 
@@ -295,7 +292,7 @@ def as_bam(pfile, fa, prefix, calmd=False, set_as_failed=None):
 
     p = nopen("|" + cmds[0], 'w')
     out = p.stdin
-    #out = sys.stdout # useful for debugging
+    # out = sys.stdout # useful for debugging
     bam_iter = reader("%s" % (pfile,), header=False, quotechar=None)
     for toks in bam_iter:
         if not toks[0].startswith("@"): break
@@ -600,7 +597,7 @@ def main(args=sys.argv[1:]):
     conv_fqs_cmd = convert_fqs(args.fastqs)
     if args.fastqs[-1] == 'NA':
         args.fastqs = [args.fastqs[0]]
-	sys.stderr.write('args.fastqs: %s'%args.fastqs)
+    sys.stderr.write('args.fastqs: %s'%args.fastqs)
     bwa_mem(args.reference, conv_fqs_cmd, "", prefix=args.prefix,
              threads=args.threads, rg=args.read_group or
              rname(*args.fastqs), calmd=args.calmd,
