@@ -1142,7 +1142,7 @@ class CallBase(object):
                     elif "G" not in map(str, watson_sample.site.alleles):
                         crick_process = 'NU'
                     # There is a "G" allele but is has to be zero for crick to be processed
-                    elif watson_sample.data.AD[map(str, watson_sample.site.alleles).index("G")] == 0:
+                    elif watson_sample.data.ADmap(str, watson_sample.site.alleles).index("G") == 0:
                         crick_process = 'NU'
                 if nt == 'C' and watson_process == 'NA':
                     # Ref is "G" and there and there are no Crick reference observation: Watson = NU.
@@ -1152,7 +1152,7 @@ class CallBase(object):
                     elif "C" not in map(str, crick_sample.site.alleles):
                         watson_process = 'NU'
                     # There is a "G" allele but is has to be zero for Watson to be processed
-                    elif crick_sample.data.AD[map(str, crick_sample.site.alleles).index("C")] == 0:
+                    elif crick_sample.data.ADmap(str, crick_sample.site.alleles).index("C") == 0:
                         watson_process = 'NU'                
 
                 # Actually have to be looking for C and T combined. This is of course dependent on C not being in crick.
@@ -1183,18 +1183,15 @@ class CallBase(object):
                                 if c_count / float(crick_sample.data.DP) > 0.05:
                                     # We cannot assume that the T observation in watson is not a converted C.
                                     # only call the T in crick
-                                    if crick_alt_index:
-                                        nt_counts[nt] += crick_sample.data.AO[crick_alt_index]
-                                        print ref_base + "\t" + str(watson_allele) + "\t" + str(crick_allele) + "\t" + \
-                                            str(watson_alt_index) + "\t" + str(crick_alt_index)
                                     if 'T' not in crick_sample.site.ALT and 'T' in watson_sample.site.ALT:
                                         # 'T' is converted C from Watson. Add for SNP count here in combined allele
-                                        t_index = [str(r) for r in watson_sample.site.ALT].index('T')
+                                        t_index = map(str, watson_sample.site.ALT).index('T')
                                         nt_counts[nt] += watson_sample.data.AO[t_index]
                                     continue
-                            # C Allele is not present in crick record, no evidence for a SNP on this position.
-                            # Assume that T count is legible T, used counts from both watson and crick here
-                            nt_counts[nt] += watson_sample.data.AO[watson_alt_index]
+                            else:
+                                # C Allele is not present in crick record, no evidence for a SNP on this position.
+                                # Assume that T count is legible T, used counts from both watson and crick here
+                                nt_counts[nt] += watson_sample.data.AO[watson_alt_index]
                         elif nt not in 'CT':
                             print nt
                             raise FloatingPointError("Seen wrong nucleotide when assuming T")
@@ -1203,28 +1200,28 @@ class CallBase(object):
                         pass
                 elif watson_process == 'NU' and crick_process == 'CU':
                     if crick_alt_index or watson_alt_index:
+                        if watson_alt_index:
+                            nt_counts[nt] += watson_sample.data.AO[watson_alt_index]
                         # We have an observation in crick which could be a SNP or a methylation polymorphism.
                         # check if alternate allele is in watson.
                         if nt in 'AG':
                             if 'G' in watson_sample.site.ALT:
-                                g_index = [str(r) for r in watson_sample.site.ALT].index('G')
+                                g_index = map(str, watson_sample.site.ALT).index('G')
                                 g_count = watson_sample.data.AO[g_index]
                                 if g_count / float(watson_sample.data.DP) > 0.05:
                                     # We cannot assume that the T observation in crick is not a converted C.
                                     # only call the T in watson
-                                    if watson_alt_index != None :
-                                        nt_counts[nt] += watson_sample.data.AO[watson_alt_index]
                                     if 'A' not in watson_sample.site.ALT and 'A' in crick_sample.site.ALT:
                                         # 'A' is converted G from crick. Add for SNP count here in combined allele
-                                        a_index = [str(r) for r in crick_sample.site.ALT].index('A')
+                                        a_index = map(str, crick_sample.site.ALT).index('A')
                                         nt_counts[nt] += crick_sample.data.AO[a_index]
                                     continue
-                            # C Allele is not present in watson record, no evidence for a SNP on this position.
-                            # Assume that T count is legible T, used counts from both crick and watson here
-                            nt_counts[nt] += crick_sample.data.AO[crick_alt_index]
-                            if watson_alt_index:
-                                nt_counts[nt] += watson_sample.data.AO[watson_alt_index]
-                            continue
+                            else:
+                                # C Allele is not present in watson record, no evidence for a SNP on this position.
+                                # Assume that T count is legible T, used counts from both crick and watson here
+                                nt_counts[nt] += crick_sample.data.AO[crick_alt_index]
+                                if watson_alt_index:
+                                    nt_counts[nt] += watson_sample.data.AO[watson_alt_index]
                         elif nt not in 'AG':
                             print nt
                             raise FloatingPointError("Seen wrong nucleotide when assuming T")
@@ -1277,7 +1274,6 @@ class CallBase(object):
 
             combined_count = self.combine_sample_snp_count_watson_crick(watson_sample, crick_sample)
             self.processed_samples[sample_name]["snp"] = (combined_count, watson_sample, crick_sample)
-
 
         self.call_SNPs()
         return 1
