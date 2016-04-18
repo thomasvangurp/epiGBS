@@ -1142,7 +1142,7 @@ class CallBase(object):
                     elif "G" not in map(str, watson_sample.site.alleles):
                         crick_process = 'NU'
                     # There is a "G" allele but is has to be zero for crick to be processed
-                    elif watson_sample.data.ADmap(str, watson_sample.site.alleles).index("G") == 0:
+                    elif watson_sample.data.AD[map(str, watson_sample.site.alleles).index("G")] == 0:
                         crick_process = 'NU'
                 if nt == 'C' and watson_process == 'NA':
                     # Ref is "G" and there and there are no Crick reference observation: Watson = NU.
@@ -1152,7 +1152,7 @@ class CallBase(object):
                     elif "C" not in map(str, crick_sample.site.alleles):
                         watson_process = 'NU'
                     # There is a "G" allele but is has to be zero for Watson to be processed
-                    elif crick_sample.data.ADmap(str, crick_sample.site.alleles).index("C") == 0:
+                    elif crick_sample.data.AD[map(str, crick_sample.site.alleles).index("C")] == 0:
                         watson_process = 'NU'                
 
                 # Actually have to be looking for C and T combined. This is of course dependent on C not being in crick.
@@ -1170,9 +1170,9 @@ class CallBase(object):
                         nt_counts[nt] += watson_sample.data.AO[watson_alt_index]
                 # Watson needs to be converted.
                 elif watson_process == 'CU' and crick_process == 'NU':
-                    if watson_alt_index or crick_alt_index:
+                    if alt_records_watson or alt_records_crick:
                         # Crick can always be used
-                        if crick_alt_index:
+                        if alt_records_crick:
                             nt_counts[nt] += crick_sample.data.AO[crick_alt_index]
                         # We have an observation in watson which could be a SNP or a methylation polymorphism.
                         # check if alternate allele is in crick.
@@ -1199,8 +1199,8 @@ class CallBase(object):
                         # No observations for alternate allele in watson as crick is NU proceed normally
                         pass
                 elif watson_process == 'NU' and crick_process == 'CU':
-                    if crick_alt_index or watson_alt_index:
-                        if watson_alt_index:
+                    if alt_records_watson or alt_records_crick:
+                        if alt_records_watson:
                             nt_counts[nt] += watson_sample.data.AO[watson_alt_index]
                         # We have an observation in crick which could be a SNP or a methylation polymorphism.
                         # check if alternate allele is in watson.
@@ -1244,9 +1244,6 @@ class CallBase(object):
         # Sets all the "snp" calls to None, TODO: if filter_snps is finished, this can be removed
         for key in self.watson_file.samples:
             self.processed_samples[key]['snp'] = None
-
-        # Reference, Watson and Crick record REF are both the same.
-        ref_base = self.watson_record.REF
 
         # If one of the records contains a depth of 0: return None.
         if min([self.watson_record.INFO['DP'], self.crick_record.INFO['DP']]) == 0:
