@@ -86,7 +86,7 @@ def convert_reads(fq1s, fq2s, out=sys.stdout):
                     #cache error when read2 is absent or read is GBS
                     continue
                 original_name = name[:-1].replace(' ','\t')
-                if name[:-1].split('\t')[-1] == 'ST:Z:crick':
+                if 'crick' in name.lower():
                     convert_list = ['CT', 'GA'][::-1]
                 else:
                     convert_list = ['CT', 'GA']
