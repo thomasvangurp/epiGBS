@@ -319,13 +319,13 @@ def remove_PCR_duplicates(in_files,args):
     """Remove PCR duplicates and non-paired PE-reads per cluster"""
     #check if random tag is present in fastq file, otherwise do not perform function
     # fastq_tags = open(in_files[''])
+    #TODO: implement sample specific PCR duplicate detection
     for strand,bamfile in in_files['bam_out'].items():
         clusters = SeqIO.parse(open(args.reference),'fasta')
         handle = pysam.AlignmentFile(bamfile,'rb')
-        out_bam = tempfile.NamedTemporaryFile(suffix='uniq.bam',dir=args.output_dir,delete=True)
+        out_bam = tempfile.NamedTemporaryFile(suffix='uniq.bam',dir=args.output_dir,delete=False)
         out_handle = pysam.AlignmentFile(out_bam.name,'wb', template=handle)
-        dup_count = 0
-        read_count = 0
+        read_count = {}
         for cluster in clusters:
             enzymes = ["Csp6I","NsiI"]
             if len(cluster.seq) > 350:
@@ -373,22 +373,35 @@ def remove_PCR_duplicates(in_files,args):
                 for read in reads:
                     if not read.is_proper_pair and cluster_is_paired:
                         continue
-                    read_count += 1
-                    if not read_count%100000:
-                        print '%s reads processed for %s strand'%(read_count,strand)
-                    tag = read.tags[-3][1]
-                    sample = read.tags[-1][1]
+                    # if not read_count%100000:
+                    #     print '%s reads processed for %s strand'%(read_count,strand)
+                    tag_dict = dict(read.tags)
+                    tag = tag_dict['RN']
+                    sample = tag_dict['RG']
+                    try:
+                        read_count[sample]['count'] += 1
+                    except KeyError:
+                        if sample not in read_count:
+                            read_count[sample] = {'count':1}
+                        else:
+                            read_count[sample]['count'] =  1
                     max_AS = max(read_out[sample][tag].values())
                     qname = [name for name,AS in read_out[sample][tag].items() if AS == max_AS][0]
                     if read.qname == qname:
                         out_handle.write(read)
                     else:
-                        dup_count += 1
-        try:
-            print '%s strand has %s reads %s duplicates which is %.1f%%'%(strand,
-            read_count ,dup_count,(100*float(dup_count)/(read_count)))
-        except ZeroDivisionError:
-            pass
+                        try:
+                            read_count[sample]['dup_count'] += 1
+                        except KeyError:
+                            read_count[sample]['dup_count'] = 1
+        for key , subdict in sorted(read_count.items()):
+            count = subdict['count']
+            if 'dup_count' in subdict:
+                dup_count = subdict['dup_count']
+                dup_pct = count / float(dup_count)
+                print '%s has % reads and % duplicates. Duplicate rate: %.2f%'%(key,count,dup_count,dup_pct)
+            else:
+                print '%s has % reads and 0 duplicates. Duplicate rate: 0%' % (key, count)
         out_bam.flush()
         out_bam.close()
         old_bam = in_files['bam_out'][strand]
