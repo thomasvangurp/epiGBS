@@ -34,9 +34,9 @@ def make_ref2(args):
                     break
                 else:
                     if int(w[0]) > int(c[0]):
-                        c = [crick.readline()[1:-1],crick.readline()[:-1]]
+                        c = [crick.readline()[1:-1],crick.readline().upper()[:-1]]
                     else:
-                        w = [watson.readline()[1:-1],watson.readline()[:-1]]
+                        w = [watson.readline()[1:-1],watson.readline().upper()[:-1]]
                 if w == []:
                     break
             out_seq = ''
