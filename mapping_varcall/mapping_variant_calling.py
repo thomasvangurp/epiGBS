@@ -160,8 +160,8 @@ def run_bwameth(in_files,args):
             )]
     run_subprocess(cmd,args,log)
 
-    log = "get header"
-    cmd = ["cat %s |samtools view -H - > %s"%
+    log = "get start of header from pe.bam, add RG information using addRG function"
+    cmd = ["samtools view -H %s > %s"%
            ((os.path.join(args.output_dir,'pe.bam')),
             (os.path.join(args.output_dir,'header.sam')))]
     run_subprocess(cmd,args,log)
@@ -171,20 +171,14 @@ def run_bwameth(in_files,args):
     in_files = addRG(in_files,args)
 
     log = "merge bam files"
-    cmd = ["cat %s %s |samtools reheader %s - > %s"%
-           (os.path.join(args.output_dir,'merged.bam'),
-            os.path.join(args.output_dir, 'pe.bam'),
-            in_files['header'],
-             os.path.join(args.output_dir, 'combined.bam'))]
+    cmd = ["cat %s <(samtools view %s) <(samtools view %s) |samtools view -Shb - |samtools sort - -o %s"%
+           (in_files['header'], os.path.join(args.output_dir, 'pe.bam'),
+             os.path.join(args.output_dir, 'merged.bam'), os.path.join(args.output_dir,'combined.bam'))]
 
-           #
-           # samtools sort -fc %s %s %s"%
-           # ((os.path.join(args.output_dir,'combined.bam')),
-           # "<(samtools reheader %s %s)"%(in_files['header'],os.path.join(args.output_dir,'merged.bam')),
-           # "<(samtools reheader %s %s)"%(in_files['header'],os.path.join(args.output_dir,'pe.bam')))]
     run_subprocess(cmd,args,log)
-
-
+    log = "index combined bam file"
+    cmd = ["samtools index %s"%(os.path.join(args.output_dir,'combined.bam'))]
+    run_subprocess(cmd, args, log)
 
 
 
@@ -198,19 +192,21 @@ def run_bwameth(in_files,args):
             if tag_dict['YD'] == 'f':
                 watson_output.write(record)
                 continue
-                if tag_dict['ST'].lower() == 'watson':
-                    watson_output.write(record)
-                else:
-                    crick_output.write(record)
+                # if tag_dict['ST'].lower() == 'watson':
+                #     watson_output.write(record)
+                # else:
+                #     crick_output.write(record)
             else:
                 crick_output.write(record)
                 continue
-                if tag_dict['ST'].lower() == 'crick':
-                    watson_output.write(record)
-                else:
-                    crick_output.write(record)
+                # if tag_dict['ST'].lower() == 'crick':
+                #     watson_output.write(record)
+                # else:
+                #     crick_output.write(record)
         except KeyError:
             continue
+    watson_output.close()
+    crick_output.close()
     # crick_output = None
     # cmd = ["samtools view -h %s |tee "%
     #        (os.path.join(args.output_dir,'combined.bam'))+
@@ -398,10 +394,10 @@ def remove_PCR_duplicates(in_files,args):
             count = subdict['count']
             if 'dup_count' in subdict:
                 dup_count = subdict['dup_count']
-                dup_pct = count / float(dup_count)
-                print '%s has % reads and % duplicates. Duplicate rate: %.2f%'%(key,count,dup_count,dup_pct)
+                dup_pct = dup_count / float(count)
+                print '%s has %s reads and %s duplicates. Duplicate rate: %.2f%%'%(key,count,dup_count,100*dup_pct)
             else:
-                print '%s has % reads and 0 duplicates. Duplicate rate: 0%' % (key, count)
+                print '%s has %s reads and 0 duplicates. Duplicate rate: 0%%' % (key, count)
         out_bam.flush()
         out_bam.close()
         old_bam = in_files['bam_out'][strand]
