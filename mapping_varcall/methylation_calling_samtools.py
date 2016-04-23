@@ -915,18 +915,18 @@ class CallBase(object):
             nt_counts = {'C': 0, 'T': 0, 'G': 0, 'A': 0}
             alt_records_watson, alt_records_crick = ([], [])
             if type(watson_sample.data.AO) == type([]):
-                #TODO: reconsider limit of 2
-                #TODO: remove double filtering.
-                alt_records_watson += [str(r) for c, r in zip(watson_sample.data.AO,watson_sample.site.ALT)
-                                       if float(c)/watson_sample.data.DP > 0.05 and c > 2]
+                alt_records_watson += [str(r) for c, r in zip(watson_sample.data.AO,watson_sample.site.ALT) if c != 0]
             if type(crick_sample.data.AO) == type([]):
-                alt_records_crick += [str(r) for c, r in zip(crick_sample.data.AO,crick_sample.site.ALT)
-                                      if float(c)/crick_sample.data.DP > 0.05 and c > 2]
+                alt_records_crick += [str(r) for c, r in zip(crick_sample.data.AO,crick_sample.site.ALT) if c != 0]
             # account reference base observations for C
             if ref_base == 'C':
                 nt_counts['C'] += crick_sample.data.RO
                 # Methylated C's are evidence of C. This will create an inbalance in the allele count as T's in watson cannot be taken into accoun
                 nt_counts['C'] += watson_sample.data.RO
+                if alt_records_crick == [] and alt_records_watson == ['T']:
+                    #fast routine for methylation polymorphisms only
+                    nt_counts['C'] = crick_sample.data.DP + watson_sample.data.DP
+                    return nt_counts
                 try:
                     crick_index_T = [str(r) for r in crick_sample.site.ALT].index('T')
                 except ValueError:
@@ -944,6 +944,10 @@ class CallBase(object):
                 #Add watson record reference observations as these are never disputed.
                 nt_counts['G'] += watson_sample.data.RO
                 nt_counts['G'] += crick_sample.data.RO
+                if alt_records_watson == [] and alt_records_crick == ['A']:
+                    # fast routine for methylation polymorphisms only
+                    nt_counts['G'] = crick_sample.data.DP + watson_sample.data.DP
+                    return nt_counts
                 try:
                     watson_index_A = [str(r) for r in watson_sample.site.ALT].index('A')
                 except ValueError:
@@ -962,16 +966,25 @@ class CallBase(object):
             if ref_base == 'A':
                 #Add watson record reference observations as these are never disputed.
                 nt_counts['A'] += watson_sample.data.RO
-                if 'G' not in alt_records_watson:
+                #Have very stringent conditions on absence for taking implied alleles into account
+                if 'G' not in alt_records_watson and 'G' not in [str(var) for var in crick_sample.site.ALT]:
                     #no evidenve for G presence is available
-                    nt_counts['A'] += crick_sample.data.RO
+                    if crick_sample.data.RO > 0 and watson_sample.data.RO > 0:
+                        #ref observations should be present for both watson and crick allele
+                        nt_counts['A'] += crick_sample.data.RO
+                    else:
+                        return {}
 
             if ref_base == 'T':
                 #Add Crick record reference observations as these are never disputed.
                 nt_counts['T'] += crick_sample.data.RO
-                if 'C' not in alt_records_crick:
+                # Have very stringent conditions on absence for taking implied alleles into account
+                if 'C' not in alt_records_crick and 'C' not in [str(var) for var in watson_sample.site.ALT]:
                     #if there is no C allele called on the crick allele than All T observations are legit
-                    nt_counts['T'] += watson_sample.data.RO
+                    if crick_sample.data.RO > 0 and watson_sample.data.RO > 0:
+                        nt_counts['T'] += watson_sample.data.RO
+                    else:
+                        return {}
 
             alt_records = []
             if 'A' in alt_records_crick:
@@ -1046,16 +1059,16 @@ class CallBase(object):
                     nt_counts[nt] += watson_sample.data.AO[watson_alt_index]
                     continue
                 elif watson_process.startswith('NO'):
-                    no, nt, strand = watson_process.split('_')
+                    no, nt_not, strand = watson_process.split('_')
                     assert strand == 'crick'
-                    if nt not in alt_records_crick:
+                    if nt_not not in alt_records_crick:
                         nt_counts[nt] += watson_sample.data.AO[watson_alt_index]
                         nt_counts[nt] += crick_sample.data.AO[crick_alt_index]
                         continue
                 elif crick_process.startswith('NO'):
-                    no,nt,strand = crick_process.split('_')
+                    no,nt_not,strand = crick_process.split('_')
                     assert strand == 'watson'
-                    if nt not in alt_records_watson:
+                    if nt_not not in alt_records_watson:
                         nt_counts[nt] += watson_sample.data.AO[watson_alt_index]
                         nt_counts[nt] += crick_sample.data.AO[crick_alt_index]
                         continue
@@ -1269,10 +1282,11 @@ class CallBase(object):
                 continue
             #add
             for k, v in allele_count.items():
-                try:
-                    combined_allele_count[k] += v
-                except KeyError:
-                    combined_allele_count[k] = v
+                if v != 0:
+                    try:
+                        combined_allele_count[k] += v
+                    except KeyError:
+                        combined_allele_count[k] = v
         if len(combined_allele_count.keys()) == 1 and combined_allele_count.keys()[0] == self.watson_record.REF:
             # all observations are reference allele. No SNP calling output is required here.
             # set all SNP records to None
@@ -1287,7 +1301,11 @@ class CallBase(object):
             for allele in [i[0] for i in combined_count_tuple]:
                 if allele != self.watson_record.REF:
                     alt_alleles.append(vcf.model._Substitution(allele))
-            site_obj.ALT = alt_alleles
+            if alt_alleles != []:
+                site_obj.ALT = alt_alleles
+            else:
+                #do not continue with snp calling if no alt alleles are found
+                return 0
             site_obj.INFO['DP'] = sum(combined_allele_count.values())
             site_obj.INFO['AD'] = [int(i[1]) for i in combined_count_tuple]
             # TODO: check which other INFO objects could be made here
@@ -1364,8 +1382,7 @@ class CallBase(object):
                 sample_indexes, samples_out
             )
 
-            if processed_record.ALT:
-                self.snp_file.write_record(processed_record)
+            self.snp_file.write_record(processed_record)
 
     def write_records(self):
         """
