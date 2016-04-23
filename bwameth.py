@@ -308,8 +308,8 @@ def as_bam(pfile, fa, prefix, calmd=False, set_as_failed=None):
             out.write(str(aln) + '\n')
 
     p.stdin.flush()
-    p.stdout.flush()
-    p.stdin.close()
+    # p.stdout.flush()
+    # p.stdin.close()
     assert p.wait() == 0
     for cmd in cmds[1:]:
         #sys.stderr.write("running: %s\n" % cmd.strip())
