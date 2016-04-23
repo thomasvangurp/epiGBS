@@ -787,6 +787,7 @@ class CallBase(object):
         # only alt records that are present with more than 5% in any sample are preserved
         keep_nt = list()
         for pos, nt in enumerate(self.watson_record.ALT[:-1]):
+            #TODO: evaluate if expensive calculation is required.
             max_pct = max([sample.data.AD[pos+1] / float(sample.data.DP) for sample in self.watson_record.samples if
                            sample.data.DP != 0])
             if max_pct > 0.05:
@@ -1003,6 +1004,8 @@ class CallBase(object):
                     #DO not add A as alt observation as it is a converted G
                     pass
                 elif 'A' in alt_records_watson or ref_base in 'GA':
+                    #TODO: check exception to this rule. In case of watson G/T and Crick A/T with ref G
+                    # A does not need to be in alt_records.
                     alt_records.append(vcf.model._Substitution('A'))
                 else:
                     return {}
@@ -1200,7 +1203,7 @@ class CallBase(object):
             for nt,count in nt_counts.items():
                 try:
                     #TODO: set to parsable parameter
-                    if count/DP > 0.05 and count > 1:
+                    if count/DP > 0.05 and count > 0:
                         nt_out[nt] = count
                 except ZeroDivisionError:
                     continue
@@ -1235,16 +1238,12 @@ class CallBase(object):
         if min([self.watson_record.INFO['DP'], self.crick_record.INFO['DP']]) == 0:
             return None
         #Check if genotypes are already called
-        #TODO: simplify always called if ref in C/G?
-        genotypes_called = None
-        for sample in self.processed_samples:
-            methylation_record = self.processed_samples[sample]['methylated']
-            if methylation_record:
-                if methylation_record.called:
-                    genotypes_called = 1
-                    break
-        if not genotypes_called:
-            self.call_genotypes()
+        #this is true if '*' is not the final record of the alt allele
+        if len(self.watson_record.ALT) != 0:
+            if str(self.watson_record.ALT[-1]) == '<*>':
+                if self.watson_record.ALT == self.crick_record.ALT and len(self.watson_record.ALT) == 1:
+                    return None
+                self.call_genotypes()
         for watson_sample, crick_sample in izip(self.watson_record, self.crick_record):
             # If there is no call for both the watson and crick record sample, continue as we can not determine
             # whether the polymorphism is a SNP polymorphism.
@@ -1343,23 +1342,35 @@ class CallBase(object):
                         AO.append(0)
                 DP = sum(allele_count.values())
                 # call GT
-                if DP == 0:
-                    GT = "./."
-                elif RO == DP:
-                    GT = "0/0"
-                elif RO > max(AO):
-                    if len(AO) == 1:
-                        GT = "0/1"
-                    else:
-                        GT = "0/"+str(AO.index(max(AO)))
-                elif max(AO) == DP:
-                    GT = "1/1"
+                GT = []
+                for i,(nt,count) in enumerate(combined_count_tuple):
+                    if nt in allele_count:
+                        if allele_count[nt] != 0:
+                            if len(GT) <= 2:
+                                GT.append(i)
+                            else:
+                                break
+                if GT != []:
+                    GT = '%s/%s'%(GT[0],GT[-1])
                 else:
-                    if len (AO) == 1:
-                        GT = "0/1"
-                    else:
-                        allele_1, allele_2, = heapq.nlargest(2, AO)
-                        GT = str(AO.index(allele_1)) + "/" + str(AO.index(allele_2))
+                    GT = './.'
+                # if DP == 0:
+                #     GT = "./."
+                # elif RO == DP:
+                #     GT = "0/0"
+                # elif RO > max(AO):
+                #     if len(AO) == 1:
+                #         GT = "0/1"
+                #     else:
+                #         GT = "0/"+str(AO.index(max(AO)) + 1)
+                # elif max(AO) == DP:
+                #     GT = "1/1"
+                # else:
+                #     if len (AO) == 1:
+                #         GT = "0/1"
+                #     else:
+                #         allele_1, allele_2, = heapq.nlargest(2, AO)
+                #         GT = str(AO.index(allele_1)) + "/" + str(AO.index(allele_2))
 
                 AD = [RO]
                 for item in AO:
