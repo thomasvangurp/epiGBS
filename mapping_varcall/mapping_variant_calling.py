@@ -148,7 +148,7 @@ def run_bwameth(in_files,args):
                 ref,
                 args.merged,add
                 )]
-        # run_subprocess(cmd,args,log)
+        run_subprocess(cmd,args,log)
 
     log = "run bwameth for non-merged reads"
     cmd = ['bwameth.py -t %s -p %s --reference %s <(pigz -cd %s %s) <(pigz -cd %s %s)'%
@@ -187,7 +187,6 @@ def run_bwameth(in_files,args):
     watson_output = pysam.AlignmentFile(os.path.join(args.output_dir,'watson.bam'),'wb', template=bam_input)
     crick_output = pysam.AlignmentFile(os.path.join(args.output_dir,'crick.bam'),'wb', template=bam_input)
     for record in bam_input:
-        break
         tag_dict = dict(record.tags)
         try:
             if (record.is_reverse and record.is_paired == False) or \
@@ -235,7 +234,6 @@ def run_bwameth(in_files,args):
             continue
     watson_output.close()
     crick_output.close()
-    crick_output = None
     # cmd = ["samtools view -h %s |tee "%
     #        (os.path.join(args.output_dir,'combined.bam'))+
     #        ">( cat <( grep '^@\|ST:Z:Watson\|ST:Z:watson' | grep '^@\|YD:Z:f') "+
@@ -428,8 +426,8 @@ def remove_PCR_duplicates(in_files,args):
                 print '%s has %s reads and %s duplicates. Duplicate rate: %.2f%%'%(key,count,dup_count,100*dup_pct)
             else:
                 print '%s has %s reads and 0 duplicates. Duplicate rate: 0%%' % (key, count)
-        out_bam.flush()
-        out_bam.close()
+        out_handle.flush()
+        out_handle.close()
         old_bam = in_files['bam_out'][strand]
         log = "move old bam file %s to %s"%(old_bam,old_bam.replace('.bam','.old.bam'))
         cmd = ["mv %s %s"%(old_bam,old_bam.replace('.bam','.old.bam'))]
