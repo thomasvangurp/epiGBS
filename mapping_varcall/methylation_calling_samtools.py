@@ -978,6 +978,8 @@ class CallBase(object):
                     if crick_sample.data.RO > 0 and watson_sample.data.RO > 0:
                         #ref observations should be present for both watson and crick allele
                         nt_counts['A'] += crick_sample.data.RO
+                    elif min(crick_sample.data.RO,watson_sample.data.RO) == 0:
+                        pass
                     else:
                         return {}
 
@@ -989,6 +991,8 @@ class CallBase(object):
                     #if there is no C allele called on the crick allele than All T observations are legit
                     if crick_sample.data.RO > 0 and watson_sample.data.RO > 0:
                         nt_counts['T'] += watson_sample.data.RO
+                    elif min(crick_sample.data.RO, watson_sample.data.RO) == 0:
+                        pass
                     else:
                         return {}
 
