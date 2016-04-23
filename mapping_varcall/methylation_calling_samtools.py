@@ -107,6 +107,14 @@ def parse_vcf(args):
             except StopIteration:
                 break
         if watson_record.CHROM == crick_record.CHROM:
+            if watson_record.is_indel:
+                next_watson = True
+                next_crick = False
+                continue
+            elif crick_record.is_indel:
+                next_crick = True
+                next_watson = False
+                continue
             if watson_record.POS > crick_record.POS:
                 next_watson = False
                 next_crick = True
@@ -1242,9 +1250,10 @@ class CallBase(object):
 
             # NU = non-convert and use. No conversion is needed
             # NA = Non available for combined call
-            # CU = convert and use. Conversion is always T>C for Watson and A>G for Crick
-            #TODO: make third category CNU for C and G only use converted and non converted observations
-            #TODO: make conditional statement in dictionary directly
+            # NO_G_watson = only use crick A counts if no G is present in Watson alleles as only than
+            # we can assume with reasonable certainty that it is in fact an A and not a converted G
+            # ADD_T_NO_T_crick =  Add T observations to C allele count if no alt T is seen in crick as only than
+            # we can assume with reasonable certainty that T observations are methylation-converted T's.
             if ref_base == "C":
                 convert_dict = {'watson': {'A': 'NU', 'T': 'NA', 'G': 'NU'},
                                 'crick':  {'A': 'NO_G_watson', 'T': 'NU', 'G': 'ADD_A_NO_A_watson'}}
