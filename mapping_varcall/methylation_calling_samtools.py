@@ -921,8 +921,6 @@ class CallBase(object):
             # account reference base observations for C
             if ref_base == 'C':
                 nt_counts['C'] += crick_sample.data.RO
-                # Methylated C's are evidence of C. This will create an inbalance in the allele count as T's in watson cannot be taken into accoun
-                nt_counts['C'] += watson_sample.data.RO
                 if alt_records_crick == [] and alt_records_watson == ['T']:
                     #fast routine for methylation polymorphisms only
                     nt_counts['C'] = crick_sample.data.DP + watson_sample.data.DP
@@ -943,7 +941,7 @@ class CallBase(object):
             if ref_base == 'G':
                 #Add watson record reference observations as these are never disputed.
                 nt_counts['G'] += watson_sample.data.RO
-                nt_counts['G'] += crick_sample.data.RO
+                # nt_counts['G'] += crick_sample.data.RO
                 if alt_records_watson == [] and alt_records_crick == ['A']:
                     # fast routine for methylation polymorphisms only
                     nt_counts['G'] = crick_sample.data.DP + watson_sample.data.DP
