@@ -148,7 +148,7 @@ def run_bwameth(in_files,args):
                 ref,
                 args.merged,add
                 )]
-        run_subprocess(cmd,args,log)
+        # run_subprocess(cmd,args,log)
 
     log = "run bwameth for non-merged reads"
     cmd = ['bwameth.py -t %s -p %s --reference %s <(pigz -cd %s %s) <(pigz -cd %s %s)'%
@@ -171,9 +171,9 @@ def run_bwameth(in_files,args):
     in_files = addRG(in_files,args)
 
     log = "merge bam files"
-    cmd = ["cat %s <(samtools view %s) <(samtools view %s) |samtools view -Shb - |samtools sort - -o %s"%
-           (in_files['header'], os.path.join(args.output_dir, 'pe.bam'),
-             os.path.join(args.output_dir, 'merged.bam'), os.path.join(args.output_dir,'combined.bam'))]
+    cmd = ["samtools merge -h %s -fcp -@ %s %s <(samtools reheader %s %s) <(samtools reheader %s %s)"%
+           (in_files['header'], args.threads, os.path.join(args.output_dir,'combined.bam'), in_files['header'],
+           os.path.join(args.output_dir, 'pe.bam'), in_files['header'],os.path.join(args.output_dir, 'merged.bam'))]
 
     run_subprocess(cmd,args,log)
     log = "index combined bam file"
@@ -187,27 +187,55 @@ def run_bwameth(in_files,args):
     watson_output = pysam.AlignmentFile(os.path.join(args.output_dir,'watson.bam'),'wb', template=bam_input)
     crick_output = pysam.AlignmentFile(os.path.join(args.output_dir,'crick.bam'),'wb', template=bam_input)
     for record in bam_input:
+        break
         tag_dict = dict(record.tags)
         try:
-            if tag_dict['YD'] == 'f':
-                watson_output.write(record)
-                continue
-                # if tag_dict['ST'].lower() == 'watson':
-                #     watson_output.write(record)
-                # else:
-                #     crick_output.write(record)
+            if (record.is_reverse and record.is_paired == False) or \
+                (record.is_paired and record.is_read1 and record.is_reverse == True) or \
+                (record.is_paired and record.is_read2 and record.is_reverse == False):
+                    if tag_dict['ST'].lower() == 'crick':
+                        watson_output.write(record)
+                    elif tag_dict['ST'].lower() == 'watson':
+                        crick_output.write(record)
+                    # elif tag_dict['YD'] == 'r' and tag_dict['ST'].lower() == 'watson':
+                    #     crick_output.write(record)
+                    # elif tag_dict['YD'] == 'r' and tag_dict['ST'].lower() == 'crick':
+                    #     watson_output.write(record)
+                    # else:
+                    #     print 'boe'
             else:
-                crick_output.write(record)
-                continue
-                # if tag_dict['ST'].lower() == 'crick':
+                if tag_dict['ST'].lower() == 'watson':
+                    watson_output.write(record)
+                elif tag_dict['ST'].lower() == 'crick':
+                    crick_output.write(record)
+                # elif tag_dict['YD'] == 'f' and tag_dict['ST'].lower() == 'crick':
+                #     crick_output.write(record)
+                # elif tag_dict['YD'] == 'r' and tag_dict['ST'].lower() == 'crick':
+                #     crick_output.write(record)
+                # elif tag_dict['YD'] == 'r' and tag_dict['ST'].lower() == 'watson':
                 #     watson_output.write(record)
                 # else:
-                #     crick_output.write(record)
+                #     print 'boe'
+
+            # elif tag_dict['YD'] == 'f':
+            #     watson_output.write(record)
+            #     continue
+            #     # if tag_dict['ST'].lower() == 'watson':
+            #     #     watson_output.write(record)
+            #     # else:
+            #     #     crick_output.write(record)
+            # else:
+            #     crick_output.write(record)
+            #     continue
+            #     # if tag_dict['ST'].lower() == 'crick':
+            #     #     watson_output.write(record)
+            #     # else:
+            #     #     crick_output.write(record)
         except KeyError:
             continue
     watson_output.close()
     crick_output.close()
-    # crick_output = None
+    crick_output = None
     # cmd = ["samtools view -h %s |tee "%
     #        (os.path.join(args.output_dir,'combined.bam'))+
     #        ">( cat <( grep '^@\|ST:Z:Watson\|ST:Z:watson' | grep '^@\|YD:Z:f') "+
@@ -339,6 +367,8 @@ def remove_PCR_duplicates(in_files,args):
                 elif region:
                     if region[1] - region[0] > 240:
                         cluster_is_paired = True
+                    else:
+                        cluster_is_paired = False
                 else:
                     cluster_is_paired = False
                 read_out = {}
@@ -565,7 +595,7 @@ def main():
     #TODO: PCR duplicate removal should work for reference genomes as well!
     files = remove_PCR_duplicates(files,args)
     #Step 3a use seqtk to trim merged and joined reads from enzyme recognition site
-    files = variant_calling_samtools(files, args)
+    # files = variant_calling_samtools(files, args)
     # files = run_Freebayes(files,args)
     #Step 4: Dereplicate all watson and crick reads
     # files = methylation_calling(files,args)
