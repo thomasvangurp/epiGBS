@@ -232,8 +232,8 @@ def run_bwameth(in_files,args):
             #     #     crick_output.write(record)
         except KeyError:
             continue
-    watson_output.close()
-    crick_output.close()
+    # watson_output.close()
+    # crick_output.close()
     # cmd = ["samtools view -h %s |tee "%
     #        (os.path.join(args.output_dir,'combined.bam'))+
     #        ">( cat <( grep '^@\|ST:Z:Watson\|ST:Z:watson' | grep '^@\|YD:Z:f') "+
@@ -372,9 +372,12 @@ def remove_PCR_duplicates(in_files,args):
                 read_out = {}
                 for read in reads:
                     tag_dict = dict(read.tags)
-                    tag = tag_dict['RN']
-                    sample = tag_dict['RG']
-                    AS = tag_dict['AS']
+                    try:
+                        tag = tag_dict['RN']
+                        sample = tag_dict['RG']
+                        AS = tag_dict['AS']
+                    except KeyError:
+                        break
                     if not read.is_proper_pair and cluster_is_paired:
                         continue
                     if sample not in read_out:
@@ -426,7 +429,7 @@ def remove_PCR_duplicates(in_files,args):
                 print '%s has %s reads and %s duplicates. Duplicate rate: %.2f%%'%(key,count,dup_count,100*dup_pct)
             else:
                 print '%s has %s reads and 0 duplicates. Duplicate rate: 0%%' % (key, count)
-        out_handle.flush()
+        # out_handle.flush()
         out_handle.close()
         old_bam = in_files['bam_out'][strand]
         log = "move old bam file %s to %s"%(old_bam,old_bam.replace('.bam','.old.bam'))
@@ -593,7 +596,7 @@ def main():
     #TODO: PCR duplicate removal should work for reference genomes as well!
     files = remove_PCR_duplicates(files,args)
     #Step 3a use seqtk to trim merged and joined reads from enzyme recognition site
-    # files = variant_calling_samtools(files, args)
+    files = variant_calling_samtools(files, args)
     # files = run_Freebayes(files,args)
     #Step 4: Dereplicate all watson and crick reads
     # files = methylation_calling(files,args)
