@@ -122,14 +122,7 @@ def run_bwameth(in_files,args):
     in_files['bam_out']['watson'] = os.path.join(args.output_dir,'watson.bam')
     in_files['bam_out']['crick'] = os.path.join(args.output_dir,'crick.bam')
     in_files['header'] = os.path.join(args.output_dir,'header.sam')
-    #TEMP COMMANDS!
-    # log = "get header"
-    # cmd = ["samtools view -H %s > %s"%
-    #        (('/Users/thomasvangurp/epiGBS/Baseclear/unfiltered_sequences/seqNNAtlE/Scabiosa/output_mapping/crick.bam'),
-    #         (os.path.join(args.tmpdir,'header.sam')))]
-    # run_subprocess(cmd,args,log)
-    # return in_files
-    #TEMP COMMANDS END!
+
     log = "index renamed reference using bwameth"
     ref = args.reference
     if not os.path.exists('%s.bwameth.c2t'%ref):
@@ -196,56 +189,15 @@ def run_bwameth(in_files,args):
                         watson_output.write(record)
                     elif tag_dict['ST'].lower() == 'watson':
                         crick_output.write(record)
-                    # elif tag_dict['YD'] == 'r' and tag_dict['ST'].lower() == 'watson':
-                    #     crick_output.write(record)
-                    # elif tag_dict['YD'] == 'r' and tag_dict['ST'].lower() == 'crick':
-                    #     watson_output.write(record)
-                    # else:
-                    #     print 'boe'
             else:
                 if tag_dict['ST'].lower() == 'watson':
                     watson_output.write(record)
                 elif tag_dict['ST'].lower() == 'crick':
                     crick_output.write(record)
-                # elif tag_dict['YD'] == 'f' and tag_dict['ST'].lower() == 'crick':
-                #     crick_output.write(record)
-                # elif tag_dict['YD'] == 'r' and tag_dict['ST'].lower() == 'crick':
-                #     crick_output.write(record)
-                # elif tag_dict['YD'] == 'r' and tag_dict['ST'].lower() == 'watson':
-                #     watson_output.write(record)
-                # else:
-                #     print 'boe'
-
-            # elif tag_dict['YD'] == 'f':
-            #     watson_output.write(record)
-            #     continue
-            #     # if tag_dict['ST'].lower() == 'watson':
-            #     #     watson_output.write(record)
-            #     # else:
-            #     #     crick_output.write(record)
-            # else:
-            #     crick_output.write(record)
-            #     continue
-            #     # if tag_dict['ST'].lower() == 'crick':
-            #     #     watson_output.write(record)
-            #     # else:
-            #     #     crick_output.write(record)
         except KeyError:
             continue
-    # watson_output.close()
-    # crick_output.close()
-    # cmd = ["samtools view -h %s |tee "%
-    #        (os.path.join(args.output_dir,'combined.bam'))+
-    #        ">( cat <( grep '^@\|ST:Z:Watson\|ST:Z:watson' | grep '^@\|YD:Z:f') "+
-    #         "<( grep 'ST:Z:Crick\|ST:Z:crick' | grep 'YD:Z:r')"+
-    #        " | samtools view -Shb - > %s)"%
-    #        (os.path.join(args.output_dir,'watson.bam'))+
-    #        "| cat <(grep '^@\|ST:Z:Crick\|ST:Z:crick' | grep '^@\|YD:Z:f') "+
-    #        "<( grep 'ST:Z:Watson\|ST:Z:watson' | grep 'YD:Z:r')" +
-    #        "| samtools view -Shb - > %s"%
-    #        (os.path.join(args.output_dir,'crick.bam'))]
-
-    # run_subprocess(cmd,args,log)
+    watson_output.close()
+    crick_output.close()
 
     in_files['bam_out'] = {}
     in_files['bam_out']['watson'] = os.path.join(args.output_dir,'watson.bam')
@@ -390,7 +342,7 @@ def remove_PCR_duplicates(in_files,args):
                         except KeyError:
                             read_out[sample][tag][read.qname] = AS
                 #process read_out
-                if read_out != {} and 'RN' not in tag_dict:
+                if read_out == {} and 'RN' not in tag_dict:
                     #random tag not yet implemented. return in_files and do not process further
                     return in_files
                 if region:
