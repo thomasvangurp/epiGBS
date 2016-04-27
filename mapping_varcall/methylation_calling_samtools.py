@@ -979,9 +979,8 @@ class CallBase(object):
                     if crick_sample.data.RO > 0 and watson_sample.data.RO > 0:
                         #ref observations should be present for both watson and crick allele
                         nt_counts['A'] += crick_sample.data.RO
-                    elif min(crick_sample.data.RO,watson_sample.data.RO) == 0:
-                        pass
-                    else:
+                    elif min(crick_sample.data.RO,watson_sample.data.RO) == 0 and \
+                                    max(crick_sample.data.RO, watson_sample.data.RO) > 0:
                         return {}
 
             if ref_base == 'T':
@@ -992,9 +991,8 @@ class CallBase(object):
                     #if there is no C allele called on the crick allele than All T observations are legit
                     if crick_sample.data.RO > 0 and watson_sample.data.RO > 0:
                         nt_counts['T'] += watson_sample.data.RO
-                    elif min(crick_sample.data.RO, watson_sample.data.RO) == 0:
-                        pass
-                    else:
+                    elif min(crick_sample.data.RO, watson_sample.data.RO) == 0 and \
+                            max(crick_sample.data.RO, watson_sample.data.RO) > 0:
                         return {}
 
             alt_records = []
@@ -1244,6 +1242,10 @@ class CallBase(object):
                 if self.watson_record.ALT == self.crick_record.ALT and len(self.watson_record.ALT) == 1:
                     return None
                 self.call_genotypes()
+            elif not self.watson_record.samples[0].called or not self.crick_record.samples[0].called:
+                self.call_genotypes()
+        else:
+            pass
         for watson_sample, crick_sample in izip(self.watson_record, self.crick_record):
             # If there is no call for both the watson and crick record sample, continue as we can not determine
             # whether the polymorphism is a SNP polymorphism.
@@ -1354,24 +1356,6 @@ class CallBase(object):
                     GT = '%s/%s'%(GT[0],GT[-1])
                 else:
                     GT = './.'
-                # if DP == 0:
-                #     GT = "./."
-                # elif RO == DP:
-                #     GT = "0/0"
-                # elif RO > max(AO):
-                #     if len(AO) == 1:
-                #         GT = "0/1"
-                #     else:
-                #         GT = "0/"+str(AO.index(max(AO)) + 1)
-                # elif max(AO) == DP:
-                #     GT = "1/1"
-                # else:
-                #     if len (AO) == 1:
-                #         GT = "0/1"
-                #     else:
-                #         allele_1, allele_2, = heapq.nlargest(2, AO)
-                #         GT = str(AO.index(allele_1)) + "/" + str(AO.index(allele_2))
-
                 AD = [RO]
                 for item in AO:
                     AD.append(item)
