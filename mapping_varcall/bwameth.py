@@ -276,7 +276,7 @@ def as_bam(pfile, fa, prefix, calmd=False, set_as_failed=None):
     set_as_failed: None, 'f', or 'r'. If 'f'. Reads mapping to that strand
                       are given the sam flag of a failed QC alignment (0x200).
     """
-    view = "samtools-0.1.18 view -bS - | samtools-0.1.18 sort -m 2415919104 - "
+    view = "samtools-0.1.18 view -bS - | samtools-0.1.18 sort -m 5005919104 - "
     if calmd:
         cmds = [
             view + "{bam}.tmp",
@@ -294,6 +294,7 @@ def as_bam(pfile, fa, prefix, calmd=False, set_as_failed=None):
     out = p.stdin
     # out = sys.stdout # useful for debugging
     bam_iter = reader("%s" % (pfile,), header=False, quotechar=None)
+    out.write('@HD\tVN:1.5\tSO:coordinate\n')
     for toks in bam_iter:
         if not toks[0].startswith("@"): break
         handle_header(toks, out)
