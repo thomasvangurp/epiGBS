@@ -21,6 +21,7 @@ Work to be done:
 import subprocess
 import sys
 import os
+import platform
 from shutil import rmtree, move, copyfile
 import tarfile
 import argparse
@@ -471,7 +472,11 @@ def fasta_to_2bit(args):
     twobit_file = os.path.join(args.temp_directory, twobit_name)
     # Writes the fasta to a twobit file in the tmp folder and is deleted after the analysis.
     log_message = "Converts the given fasta to a .2bit file"
-    command = " ".join([os.path.join(script_dir, "templates/faToTwoBit"), fasta, twobit_file])
+    print platform.system()
+    if platform.system() == 'Linux':
+        command = " ".join([os.path.join(script_dir, "templates/faToTwoBit_linux"), fasta, twobit_file])
+    else:
+        command = " ".join([os.path.join(script_dir, "templates/faToTwoBit"), fasta, twobit_file])
     run_subprocess(command, log_message)
     return twobit_file
 
