@@ -115,11 +115,11 @@ def compress_folder(args, cur_time):
     For Galaxy: After finishing the analysis, the folder will be zipped in tar.gz format.
     Replaces the Galaxy .dat file with the compressed analysis folder.
     """
-    if args.scriptdir == None:
+    if args.script_dir == None:
         script_dir = os.path.dirname(os.path.realpath(__file__))
         script_dir = script_dir.replace(' ', '\ ')
     else:
-        script_dir = args.scriptdir  # Gets the folder destination of the current script.
+        script_dir = args.script_dir  # Gets the folder destination of the current script.
     # script_dir = script_dir.replace(' ','\ ')
     analysis_folder = os.path.join(script_dir, "assemblies", args.assembly_code, cur_time)
     if not os.path.isdir(analysis_folder):
@@ -138,11 +138,11 @@ def prepare_bed_analysis(args):
     - Making chromosomes file with each valid chromosome.
     - Making the analysis folder.
     """
-    if args.scriptdir == None:
+    if args.script_dir == None:
         script_dir = os.path.dirname(os.path.realpath(__file__))
         script_dir = script_dir.replace(' ', '\ ')
     else:
-        script_dir = args.scriptdir
+        script_dir = args.script_dir
     # script_dir = script_dir.replace(' ','\ ')
     sys.stdout.write("Starting: Preparing analysis files.\n")
     output_dir = os.path.join(script_dir, "assemblies", args.assembly_code, "bs.bed/")
@@ -187,11 +187,11 @@ def run_analysis(args):
     After the analysis, the output folder will be zipped in a given directory.
     """
     cur_time = time.strftime("%d_%m_%Y_%H:%M")
-    if args.scriptdir == None:
+    if args.script_dir == None:
         script_dir = os.path.dirname(os.path.realpath(__file__))
         script_dir = script_dir.replace(' ', '\ ')
     else:
-        script_dir = args.scriptdir  # Gets the folder destination of the current script.
+        script_dir = args.script_dir  # Gets the folder destination of the current script.
     # script_dir = script_dir.replace(' ','\ ')
     package_name = "".join(["BSgenome.", args.species_name, args.genus_name, ".NIOO.v", args.version])
     if args.annotation:  # Creates R readable code for the file locations of the analysis.
@@ -239,11 +239,11 @@ def install_assembly(args):
     """
     Install the template assembly package with the given data and DESCRIPTION file.
     """
-    if args.scriptdir == None:
+    if args.script_dir == None:
         script_dir = os.path.dirname(os.path.realpath(__file__))
         script_dir = script_dir.replace(' ', '\ ')
     else:
-        script_dir = args.scriptdir  # Gets the folder destination of the current script.
+        script_dir = args.script_dir  # Gets the folder destination of the current script.
     script_dir = script_dir.replace(' ','\ ')
     assembly_package = script_dir+"/assembly"
     # If the library path consists out of a empty list (R syntax) than the packages will be written to the standard
@@ -266,11 +266,11 @@ def get_cpg_sites(args, package_name):
     data of the optional annotation data.
     After the installation of the assembly, the files will be deleted.
     """
-    if args.scriptdir == None:
+    if args.script_dir == None:
         script_dir = os.path.dirname(os.path.realpath(__file__))
         script_dir = script_dir.replace(' ', '\ ')
     else:
-        script_dir = args.scriptdir  # Gets the folder destination of the current script.
+        script_dir = args.script_dir  # Gets the folder destination of the current script.
     # script_dir = script_dir.replace(' ','\ ')
     output_file_name = args.assembly_code+".CpG.RData"
     output_dir = os.path.join(script_dir,'assembly','data',output_file_name)
@@ -307,11 +307,11 @@ def make_assembly_description(args, package_name):
     Makes the description for the new assembly. The description is already made in a template though
     the assembly and the package name needs to be specified.
     """
-    if args.scriptdir == None:
+    if args.script_dir == None:
         script_dir = os.path.dirname(os.path.realpath(__file__))
         script_dir = script_dir.replace(' ', '\ ')
     else:
-        script_dir = args.scriptdir # Gets the folder destination of the current script.
+        script_dir = args.script_dir # Gets the folder destination of the current script.
     # script_dir = script_dir.replace(' ','\ ')
     description_dict = {
         "assembly": args.assembly_code,
@@ -330,11 +330,11 @@ def install_rnbeads(args):
     """
     Installs the appended RnBeads package to the /home/R folder of the user.
     """
-    if args.scriptdir == None:
+    if args.script_dir == None:
         script_dir = os.path.dirname(os.path.realpath(__file__))
         script_dir = script_dir.replace(' ','\ ')
     else:
-        script_dir = args.scriptdir
+        script_dir = args.script_dir
     rnbeads_package = os.path.join(script_dir,"RnBeads")
     # If the library path consists out of a empty list (R syntax) than the packages will be written to the standard
     # package installation folder (mostly /usr/local/bin/R). Otherwise it will be written to the specific folder.
@@ -383,11 +383,11 @@ def append_source_code(args, folder_name):
     #TODO: investigate safer / better method to check for doubles / existing genome assembly names. Do not add
     #TODO: assemblies that already exist!
     chrom_sizes = prepare_analysis.chrom_sizes(args.fasta, args.temp_directory, args.assembly_code)
-    if args.scriptdir == None:
+    if args.script_dir == None:
         script_dir = os.path.dirname(os.path.realpath(__file__))
         script_dir = script_dir.replace(' ', '\ ')
     else:
-        script_dir = args.scriptdir # Gets the folder destination of the current script.
+        script_dir = args.script_dir # Gets the folder destination of the current script.
     # script_dir = script_dir.replace(' ','\ ')
     move(chrom_sizes.name, script_dir+"/RnBeads/inst/extdata/chromSizes/"+os.path.basename(chrom_sizes.name))
     chromosome_var = "".join(["\n", args.assembly_code, '.chr <- read.table("',
@@ -468,11 +468,11 @@ def make_rnbeads_description(twobit_file, args):
     """
     Makes the description file for the RnBeads package.
     """
-    if args.scriptdir == None:
+    if args.script_dir == None:
         script_dir = os.path.dirname(os.path.realpath(__file__))
         script_dir = script_dir.replace(' ', '\ ')
     else:
-        script_dir = args.scriptdir # Gets the folder destination of the current script.
+        script_dir = args.script_dir # Gets the folder destination of the current script.
     #script_dir = script_dir.replace(' ','\ ')
     file_dict = {
         "species": args.species_name,
@@ -498,11 +498,11 @@ def fasta_to_2bit(args):
     #TODO: build fato2bit from source on installation to make sure it runs.
     #Source for fat2bit for mac osx is here: http://hgdownload.cse.ucsc.edu/admin/exe/macOSX.x86_64/
     #TODO: or list dependency in help and check for executable upon running analysis.
-    if args.scriptdir == None:
+    if args.script_dir == None:
         script_dir = os.path.dirname(os.path.realpath(__file__))
         script_dir = script_dir.replace(' ', '\ ')
     else:
-        script_dir = args.scriptdir # Gets the folder destination of the current script.
+        script_dir = args.script_dir # Gets the folder destination of the current script.
     script_dir = script_dir.replace(' ','\ ')
     sys.stdout.write("""Adding the genome of """+args.species_name+"""" to the RnBeads package\n
                 Starting with converting the .fasta to a .2bit file.\n""")
