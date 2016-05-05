@@ -320,7 +320,8 @@ def make_assembly_description(args, package_name):
     template_description_file = open(os.path.join(script_dir, "templates/assembly_description.DCF"))
     template_description = template_description_file.read() % description_dict
     template_description_file.close()
-    new_description = open(args.temp_directory+"DESCRIPTION", "w")
+    #TODO: us os.path.join instead of adding, /tmp could not be terminated with /!
+    new_description = open(os.path.join(args.temp_directory,"DESCRIPTION"), "w")
     new_description.write(template_description)
     new_description.close()
     move(new_description.name, script_dir+"/assembly/DESCRIPTION")  # Puts the new description file in the folder.
@@ -512,8 +513,8 @@ def fasta_to_2bit(args):
     else:
         script_dir = args.script_dir # Gets the folder destination of the current script.
     script_dir = script_dir.replace(' ','\ ')
-    sys.stdout.write("""Adding the genome of """+args.species_name+"""" to the RnBeads package\n
-                Starting with converting the .fasta to a .2bit file.\n""")
+    sys.stdout.write("""Adding the genome of %s to the RnBeads package\n
+                Starting with converting the .fasta to a .2bit file.\n"""%args.species_name)
     fasta = args.fasta
     twobit_name = os.path.basename(os.path.splitext(fasta)[0])+'.2bit'
     twobit_file = os.path.join(args.temp_directory, twobit_name)
