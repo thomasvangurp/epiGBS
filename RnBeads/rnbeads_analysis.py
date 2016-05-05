@@ -352,7 +352,11 @@ def append_assembly(args):
     :argument: args, all arguments from argparse.
     Appends the RnBeads package with the assembly annotation and appends the sourcecode to its destination folder.
     """
-    script_dir = os.path.dirname(os.path.realpath(__file__))  # Gets the folder destination of the current script.
+    if args.script_dir == None:
+        script_dir = os.path.dirname(os.path.realpath(__file__))
+        script_dir = script_dir.replace(' ', '\ ')
+    else:
+        script_dir = args.script_dir  # Gets the folder destination of the current script.
     # script_dir = script_dir.replace(' ','\ ')
     annotation_file = "".join(['"', script_dir, "/RnBeads/data/annotations.RData", '"'])
     assembly_dict = {
@@ -444,7 +448,11 @@ def forge_genome_file(description, args):
     """
     Creates the new package of the given fasta via the BSgenome.forge method in R.
     """
-    script_dir = os.path.dirname(os.path.realpath(__file__))  # Gets the folder destination of the current script.
+    if args.script_dir == None:
+        script_dir = os.path.dirname(os.path.realpath(__file__))
+        script_dir = script_dir.replace(' ', '\ ')
+    else:
+        script_dir = args.script_dir  # Gets the folder destination of the current script.
     #script_dir = script_dir.replace('Thomas ','Thomas\ ')
     file_dict = {"DCF": description.name,
                  "tmp": args.temp_directory}
