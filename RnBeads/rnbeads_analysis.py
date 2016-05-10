@@ -580,7 +580,6 @@ def parse_args():
                                File syntax: e.g. chr1\nchr2\n.
                                The name of the annotation will be the same as the filename.""")
     analysis_only.add_argument('-tmp', '--temp_directory', help='temp directory', default="/tmp/")
-    analysis_only.add_argument('-outpath', '--outpath', help='Path for output', default="/mnt/")
     analysis_only.add_argument('-s', '--species_name', help='Name of the species belonging to the genome')
     analysis_only.add_argument('-g', '--genus_name', help='Name of the genus from where the organism stems from')
     analysis_only.add_argument('-v', '--version', help='Version of the genome to be forged', default="1")
@@ -603,6 +602,7 @@ def parse_args():
                                   The name of the annotation will be the same as the filename.""")
     add_and_analysis.add_argument('-sf', '--sample_file', help='Sample file location.')
     add_and_analysis.add_argument('-tmp', '--temp_directory', help='temp directory', default="/tmp/")
+    add_and_analysis.add_argument('-outpath', '--outpath', help='Path for output', default=None)
     add_and_analysis.add_argument('-s', '--species_name', help='Name of the species belonging to the genome')
     add_and_analysis.add_argument('-g', '--genus_name', help='Name of the genus from where the organism stems from')
     add_and_analysis.add_argument('-v', '--version', help='Version of the genome to be forged', default="1")
