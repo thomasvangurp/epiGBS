@@ -1,4 +1,15 @@
 #!/usr/bin/env python
+
+import subprocess
+import sys
+import os
+from shutil import rmtree, move, copyfile
+import tarfile
+import argparse
+import prepare_analysis
+import check_file_formats
+import time
+
 __author__ = 'Bjorn Wouters'
 __email__ = "bjorn-wouters@hotmail.com"
 
@@ -17,16 +28,6 @@ Work to be done:
 - Adding of more options for the analysis instead of using the default.
 - Automatic sample file creation.
 """
-
-import subprocess
-import sys
-import os
-from shutil import rmtree, move, copyfile
-import tarfile
-import argparse
-import prepare_analysis
-import check_file_formats
-import time
 
 
 def main():
@@ -55,7 +56,7 @@ def main():
         description = make_rnbeads_description(twobit_file, args)
         tmp_files.append(description.name)
         # Creates the new package of the given fasta via the BSgenome.forge method in R.
-        #remove all existing BSgenome.* in /tmp
+        # remove all existing BSgenome.* in /tmp
         cmd = "rm -rf %s"%os.path.join(args.temp_directory,'BSgenome*')
         run_subprocess(cmd,"removing all existing BSgenome packages")
         forge_script = forge_genome_file(description, args)
@@ -83,9 +84,25 @@ def main():
             analysis_script = run_analysis(args)
             tmp_files.append(analysis_script)
     finally:
-	# Clear all files written to the tmp directory.
-        #clear_tmp(tmp_files)
-	a=1
+        # Clear all files written to the tmp directory.
+        clean_source_package(args)
+        clear_tmp(tmp_files)
+
+
+def clean_source_package(args):
+    """
+    Cleans the RnBeads source package.
+    """
+    # Replaces the appended assemblies.R code with the original one.
+    script_dir = os.path.dirname(os.path.realpath(__file__))  # Gets the folder destination of the current script.
+    assemblies_file = os.path.join(script_dir, "templates", "assemblies.R")
+    source_directory = os.path.join(script_dir, "RnBeads", "R", "assemblies.R")
+    copyfile(assemblies_file, source_directory)
+
+    # Removes the chrom sizes file from the source code
+    chrom_file = os.path.join(script_dir, "RnBeads", "inst", "extdata", "chromSizes", args.assembly_code + ".chrom.sizes")
+    os.remove(chrom_file)
+
 
 def run_subprocess(cmd, log_message):
     """
@@ -134,7 +151,6 @@ def prepare_bed_analysis(args):
     - Making the analysis folder.
     """
     script_dir = os.path.dirname(os.path.realpath(__file__))  # Gets the folder destination of the current script.
-    # script_dir = script_dir.replace(' ','\ ')
     sys.stdout.write("Starting: Preparing analysis files.\n")
     output_dir = os.path.join(script_dir, "assemblies", args.assembly_code, "bs.bed/")
     if not os.path.exists(output_dir):
@@ -184,7 +200,7 @@ def run_analysis(args):
     if args.annotation:  # Creates R readable code for the file locations of the analysis.
         annotation_files = list()
         annotation_names = list()
-        #TODO: adding multiple annotation files in galaxy does not yet work.
+        # TODO: adding multiple annotation files in galaxy does not yet work.
         for annotation_file in args.annotation:
             annotation_files.append('"'+annotation_file+'"')
             annotation_names.append('"'+os.path.basename(os.path.splitext(annotation_file)[0])+'"')
@@ -205,7 +221,7 @@ def run_analysis(args):
         "cores": args.cores,
         "time": cur_time}
     # Puts the dict in the file.
-    template_script = open(os.path.join(script_dir,"templates","run.analysis.R")).read() % script_dict
+    template_script = open(os.path.join(script_dir, "templates", "run.analysis.R")).read() % script_dict
     # Write filled in analysis R script to tmp dir.
     r_script = open(os.path.join(args.temp_directory, "run.analysis.R"), "w")
     r_script.write(template_script)
@@ -252,16 +268,16 @@ def get_cpg_sites(args, package_name):
     script_dir = os.path.dirname(os.path.realpath(__file__))  # Gets the folder destination of the current script.
     # script_dir = script_dir.replace(' ','\ ')
     output_file_name = args.assembly_code+".CpG.RData"
-    output_dir = os.path.join(script_dir,'assembly','data',output_file_name)
-    #check if data exists as a subfolder of assembly!
-    if not os.path.exists(os.path.join(script_dir,'assembly','data')):
-        os.mkdir(os.path.join(script_dir,'assembly','data'))
-    region_output = os.path.join(script_dir.replace(' ','\ '),'assembly','data',args.assembly_code+'.regions.RData')
+    output_dir = os.path.join(script_dir, 'assembly', 'data', output_file_name)
+    # check if data exists as a subfolder of assembly!
+    if not os.path.exists(os.path.join(script_dir, 'assembly', 'data')):
+        os.mkdir(os.path.join(script_dir, 'assembly', 'data'))
+    region_output = os.path.join(script_dir.replace(' ', '\ '), 'assembly', 'data', args.assembly_code+'.regions.RData')
     script_dict = {
         "assembly": args.assembly_code,
         "package": os.path.basename(package_name),
         "species": args.species_name,
-        "sites_output": output_dir.replace(' ','\ '),
+        "sites_output": output_dir.replace(' ', '\ '),
         "regions_output": region_output,
         "lib_path": args.lib_path,
         "chromosomes": os.path.join(script_dir, "assemblies", args.assembly_code+"/bs.bed/chromosomes.txt")}
@@ -270,7 +286,7 @@ def get_cpg_sites(args, package_name):
     template_script = template_script_file.read() % script_dict
     template_script_file.close()
     # Makes a temporary R script and executes it after it is appended with the template script.
-    r_script = open(os.path.join(args.temp_directory,"get.sites.R"), "w")
+    r_script = open(os.path.join(args.temp_directory, "get.sites.R"), "w")
     r_script.write(template_script)
     r_script.close()
     command = "R < "+r_script.name+" --no-save"
@@ -295,7 +311,7 @@ def make_assembly_description(args, package_name):
     template_description_file = open(os.path.join(script_dir, "templates/assembly_description.DCF"))
     template_description = template_description_file.read() % description_dict
     template_description_file.close()
-    new_description = open(args.temp_directory+"DESCRIPTION", "w")
+    new_description = open(os.path.join(args.temp_directory, "DESCRIPTION"), "w")
     new_description.write(template_description)
     new_description.close()
     move(new_description.name, script_dir+"/assembly/DESCRIPTION")  # Puts the new description file in the folder.
@@ -343,8 +359,8 @@ def append_assembly(args):
     command = "R < "+add_assembly_script.name+" --no-save"
     log_message = "Adding assembly to RnBeads package."
     run_subprocess(command, log_message)  # Executes the command and appends the assembly data.
-    move(os.path.join(args.temp_directory,"annotations.RData"),\
-    os.path.join(script_dir,"RnBeads","data","annotations.RData"))
+    move(os.path.join(args.temp_directory, "annotations.RData"),
+         os.path.join(script_dir, "RnBeads", "data", "annotations.RData"))
     return add_assembly_script.name
 
 
@@ -352,11 +368,9 @@ def append_source_code(args, folder_name):
     """
     Appends new genome Rfile to the existing R source code so that Rnbeads can be run on the 'new' assembly.
     """
-    #TODO: investigate safer / better method to check for doubles / existing genome assembly names. Do not add
-    #TODO: assemblies that already exist!
     chrom_sizes = prepare_analysis.chrom_sizes(args.fasta, args.temp_directory, args.assembly_code)
     script_dir = os.path.dirname(os.path.realpath(__file__))  # Gets the folder destination of the current script.
-    # script_dir = script_dir.replace(' ','\ ')
+
     move(chrom_sizes.name, script_dir+"/RnBeads/inst/extdata/chromSizes/"+os.path.basename(chrom_sizes.name))
     chromosome_var = "".join(["\n", args.assembly_code, '.chr <- read.table("',
                               os.path.join(script_dir, "assemblies", args.assembly_code+"/"),
@@ -464,8 +478,8 @@ def fasta_to_2bit(args):
     #TODO: or list dependency in help and check for executable upon running analysis.
     script_dir = os.path.dirname(os.path.realpath(__file__))  # Gets the folder destination of the current script.
     script_dir = script_dir.replace(' ','\ ')
-    sys.stdout.write("""Adding the genome of """+args.species_name+"""" to the RnBeads package\n
-                Starting with converting the .fasta to a .2bit file.\n""")
+    sys.stdout.write("""Adding the genome of %s to the RnBeads package\n
+                Starting with converting the .fasta to a .2bit file.\n""" % args.species_name)
     fasta = args.fasta
     twobit_name = os.path.basename(os.path.splitext(fasta)[0])+'.2bit'
     twobit_file = os.path.join(args.temp_directory, twobit_name)

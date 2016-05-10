@@ -82,7 +82,7 @@ def IgvToRnBeads(input_file, output_dict, samples, output, given_samples=None, m
                     sample_file = output_dict[sample]
                     out_str = chr+"\t%s\t%s\t"%(int(pos)-1, int(pos)+1)
                     sample_file.write(out_str)
-                    #Methylation in CG sites is determined for both watson and crick strand combined!
+                    # Methylation in CG sites is determined for both watson and crick strand combined!
                     methylated = int(values_C[i])+int(values_G[i])
                     if total == 0:
                         ratio = 0
@@ -130,7 +130,7 @@ def chrom_sizes(fasta, tmp, ac):
     output_file = open(os.path.join(tmp, ac+".chrom.sizes"), 'w')
     for record in SeqIO.parse(fasta, "fasta"):
         record_size = len(record.seq._data)
-        output_file.write("chr"+record.name+"\t"+str(record_size)+"\n")
+        output_file.write(record.name + "\t"+str(record_size)+"\n")
     output_file.close()
     return output_file
 

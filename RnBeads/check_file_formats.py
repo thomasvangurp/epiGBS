@@ -63,7 +63,7 @@ def check_sample_file(sample_input):
     for sample in sample_file:
         split_line = sample.rstrip('\n').split(",")
         if len(split_line) != len(header):
-            raise FormatError("Length not the sample as the header, you're missing a value with a sample")
+            raise FormatError("Length not the same as the header, you're missing a value with a sample")
         if split_line[1] != split_line[0]+".bed":
             raise FormatError("Bed column incorrect: second column = first column name + .bed")
     return True

@@ -79,10 +79,12 @@ NULL
 .rnb.annotations <- new.env()
 
 ## Chromosomes supported by the annotation packages
+
 ##%(chromosomes)s
 CHROMOSOMES.L2S <- list("hg19" = c(1:22, "X", "Y"), "mm9" = c(1:19, "X", "Y"), "mm10" = c(1:19, "X", "Y"),
 	"rn5" = c(1:20, "X")
-	##%(assembly_table)s
+
+##%(assembly_table)s
 	)
 CHROMOSOMES.S2L <- lapply(CHROMOSOMES.L2S, function(x) { paste0("chr", x) })
 CHROMOSOMES <- CHROMOSOMES.S2L
@@ -179,6 +181,9 @@ get.genome.data <- function(assembly) {
   } else if (assembly == "rn5") {
     suppressPackageStartupMessages(require(BSgenome.Rnorvegicus.UCSC.rn5))
     genome.data <- Rnorvegicus
+  }
+##
+
 ##%(assembly_package)s
   else {
     stop("unsupported assembly")
