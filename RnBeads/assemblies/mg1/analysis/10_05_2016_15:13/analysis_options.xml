@@ -1,0 +1,106 @@
+<rnb.xml>
+	<analysis.name null="null"></analysis.name>
+	<logging>true</logging>
+	<email null="null"></email>
+	<assembly>mg1</assembly>
+	<columns.pairing null="null"></columns.pairing>
+	<analyze.sites>true</analyze.sites>
+	<region.types>annotation</region.types>
+	<region.aggregation>mean</region.aggregation>
+	<region.subsegments>0</region.subsegments>
+	<region.subsegments.types null="null"></region.subsegments.types>
+	<identifiers.column null="null"></identifiers.column>
+	<points.category>16,17,3,15,4,7,8</points.category>
+	<colors.category>#1B9E77,#D95F02,#7570B3,#E7298A,#66A61E,#E6AB02,#A6761D,#666666</colors.category>
+	<colors.gradient>#132B43,#56B1F7</colors.gradient>
+	<min.group.size>2</min.group.size>
+	<max.group.count null="null"></max.group.count>
+	<gz.large.files>false</gz.large.files>
+	<strand.specific>false</strand.specific>
+	<replicate.id.column null="null"></replicate.id.column>
+	<import>true</import>
+	<import.default.data.type>idat.dir</import.default.data.type>
+	<import.table.separator>,</import.table.separator>
+	<import.bed.style>EPP</import.bed.style>
+	<import.bed.columns names="chr,start,end,strand,meth,coverage">1,2,3,6,4,5</import.bed.columns>
+	<import.bed.frame.shift>1</import.bed.frame.shift>
+	<import.bed.test>true</import.bed.test>
+	<import.bed.test.only>false</import.bed.test.only>
+	<import.idat.chunk.size null="null"></import.idat.chunk.size>
+	<preprocessing>true</preprocessing>
+	<qc>true</qc>
+	<qc.boxplots>true</qc.boxplots>
+	<qc.barplots>true</qc.barplots>
+	<qc.negative.boxplot>true</qc.negative.boxplot>
+	<qc.snp.heatmap>true</qc.snp.heatmap>
+	<qc.snp.distances>true</qc.snp.distances>
+	<qc.snp.boxplot>false</qc.snp.boxplot>
+	<qc.snp.barplot>false</qc.snp.barplot>
+	<qc.coverage.plots>false</qc.coverage.plots>
+	<qc.coverage.threshold.plot>1,2,3,4,5,6,7,8,9,10</qc.coverage.threshold.plot>
+	<qc.coverage.histograms>true</qc.coverage.histograms>
+	<qc.coverage.violins>true</qc.coverage.violins>
+	<qc.sample.batch.size>500</qc.sample.batch.size>
+	<normalization null="null"></normalization>
+	<normalization.method>swan</normalization.method>
+	<normalization.background.method>methylumi.noob</normalization.background.method>
+	<normalization.plot.shifts>true</normalization.plot.shifts>
+	<filtering.whitelist null="null"></filtering.whitelist>
+	<filtering.blacklist null="null"></filtering.blacklist>
+	<filtering.context.removal></filtering.context.removal>
+	<filtering.snp>no</filtering.snp>
+	<filtering.sex.chromosomes.removal>false</filtering.sex.chromosomes.removal>
+	<filtering.missing.value.quantile>1</filtering.missing.value.quantile>
+	<filtering.coverage.threshold>5</filtering.coverage.threshold>
+	<filtering.low.coverage.masking>false</filtering.low.coverage.masking>
+	<filtering.high.coverage.outliers>true</filtering.high.coverage.outliers>
+	<filtering.greedycut>false</filtering.greedycut>
+	<filtering.greedycut.pvalue.threshold>0.05</filtering.greedycut.pvalue.threshold>
+	<filtering.greedycut.rc.ties>row</filtering.greedycut.rc.ties>
+	<filtering.deviation.threshold>0</filtering.deviation.threshold>
+	<inference>false</inference>
+	<inference.targets.sva></inference.targets.sva>
+	<inference.reference.methylome.column null="null"></inference.reference.methylome.column>
+	<inference.max.cell.type.markers>10000</inference.max.cell.type.markers>
+	<inference.top.cell.type.markers>500</inference.top.cell.type.markers>
+	<inference.sva.num.method>leek</inference.sva.num.method>
+	<exploratory>true</exploratory>
+	<exploratory.columns null="null"></exploratory.columns>
+	<exploratory.top.dimensions>0</exploratory.top.dimensions>
+	<exploratory.principal.components>8</exploratory.principal.components>
+	<exploratory.correlation.pvalue.threshold>0.01</exploratory.correlation.pvalue.threshold>
+	<exploratory.correlation.permutations>10000</exploratory.correlation.permutations>
+	<exploratory.correlation.qc>true</exploratory.correlation.qc>
+	<exploratory.beta.distribution>true</exploratory.beta.distribution>
+	<exploratory.intersample>false</exploratory.intersample>
+	<exploratory.deviation.plots null="null"></exploratory.deviation.plots>
+	<exploratory.clustering>all</exploratory.clustering>
+	<exploratory.clustering.top.sites>1000</exploratory.clustering.top.sites>
+	<exploratory.clustering.heatmaps.pdf>false</exploratory.clustering.heatmaps.pdf>
+	<exploratory.region.profiles></exploratory.region.profiles>
+	<exploratory.gene.symbols null="null"></exploratory.gene.symbols>
+	<exploratory.custom.loci.bed null="null"></exploratory.custom.loci.bed>
+	<differential>true</differential>
+	<differential.site.test.method>limma</differential.site.test.method>
+	<differential.permutations>0</differential.permutations>
+	<differential.comparison.columns null="null"></differential.comparison.columns>
+	<differential.comparison.columns.all.pairwise null="null"></differential.comparison.columns.all.pairwise>
+	<covariate.adjustment.columns null="null"></covariate.adjustment.columns>
+	<differential.adjustment.sva>true</differential.adjustment.sva>
+	<differential.adjustment.celltype>true</differential.adjustment.celltype>
+	<differential.enrichment>false</differential.enrichment>
+	<export.to.bed>true</export.to.bed>
+	<export.to.trackhub>bigBed,bigWig</export.to.trackhub>
+	<export.to.csv>false</export.to.csv>
+	<export.to.ewasher>false</export.to.ewasher>
+	<export.types>sites</export.types>
+	<colors.meth>#AD0021,#909090,#39278C</colors.meth>
+	<colors.3.gradient>#832424,#FFFFFF,#3A3A98</colors.3.gradient>
+	<logging.memory>true</logging.memory>
+	<logging.disk>false</logging.disk>
+	<logging.exit.on.error>false</logging.exit.on.error>
+	<distribution.subsample>1000000</distribution.subsample>
+	<disk.dump.big.matrices>true</disk.dump.big.matrices>
+	<enforce.memory.management>false</enforce.memory.management>
+	<enforce.destroy.disk.dumps>false</enforce.destroy.disk.dumps>
+</rnb.xml>

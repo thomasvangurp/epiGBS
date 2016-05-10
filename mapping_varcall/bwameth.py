@@ -82,16 +82,14 @@ def convert_reads(fq1s, fq2s, out=sys.stdout):
         lt80 = 0
         for pair in izip(q1_iter, q2_iter):
             for read_i, (name, seq, _, qual) in enumerate(pair):
-                if not name:
+                if name == None or 'ST:Z:gbs' in name:
+                    #cache error when read2 is absent or read is GBS
                     continue
                 original_name = name[:-1].replace(' ','\t')
-                if name[:-1].split('\t')[-1] == 'ST:Z:crick':
+                if 'crick' in name.lower():
                     convert_list = ['CT', 'GA'][::-1]
-                elif name[:-1].split('\t')[-1] == 'ST:Z:watson':
-                    convert_list = ['CT', 'GA']
                 else:
-                    break
-                if name is None: continue
+                    convert_list = ['CT', 'GA']
                 name = name.rstrip("\r\n").split(" ")[0]
                 if name.endswith(("_R1", "_R2")):
                     name = name[:-3]
@@ -105,8 +103,7 @@ def convert_reads(fq1s, fq2s, out=sys.stdout):
                 char_a, char_b = convert_list[read_i]
                 # keep original sequence as name.
                 name = "\t".join((original_name,
-                                "YS:Z:" + seq +
-                                "\tYC:Z:" + char_a + char_b + '\n'))
+                                "YS:Z:" + seq + '\n'))
                 seq = seq.replace(char_a, char_b)
                 out.write("".join((name, seq, "\n+\n", qual)))
 
@@ -279,7 +276,7 @@ def as_bam(pfile, fa, prefix, calmd=False, set_as_failed=None):
     set_as_failed: None, 'f', or 'r'. If 'f'. Reads mapping to that strand
                       are given the sam flag of a failed QC alignment (0x200).
     """
-    view = "samtools_old view -bS - | samtools_old sort -m 2415919104 - "
+    view = "samtools-0.1.18 view -bS - | samtools-0.1.18 sort -m 5005919104 - "
     if calmd:
         cmds = [
             view + "{bam}.tmp",
@@ -288,15 +285,16 @@ def as_bam(pfile, fa, prefix, calmd=False, set_as_failed=None):
     else:
         cmds = [view + "{bam}"]
 
-    cmds.append("samtools_old index {bam}.bam")
+    cmds.append("samtools-0.1.18 index {bam}.bam")
     cmds = [c.format(bam=prefix, fa=fa) for c in cmds]
 
-    #sys.stderr.write("writing to:\n%s\n" % cmds[0])
+    sys.stderr.write("writing to:\n%s\n" % cmds[0])
 
     p = nopen("|" + cmds[0], 'w')
     out = p.stdin
-    #out = sys.stdout # useful for debugging
+    # out = sys.stdout # useful for debugging
     bam_iter = reader("%s" % (pfile,), header=False, quotechar=None)
+    out.write('@HD\tVN:1.5\tSO:coordinate\n')
     for toks in bam_iter:
         if not toks[0].startswith("@"): break
         handle_header(toks, out)
@@ -309,13 +307,15 @@ def as_bam(pfile, fa, prefix, calmd=False, set_as_failed=None):
 
         for aln in handle_reads(pair_list, set_as_failed):
             out.write(str(aln) + '\n')
-
-    p.stdin.flush()
-    p.stdout.flush()
-    p.stdin.close()
-    assert p.wait() == 0
+    stdout, stderr = p.communicate()
+    stdout = stdout.replace('\r', '\n')
+    stderr = stderr.replace('\r', '\n')
+    # p.stdin.flush()
+    # p.stdout.flush()
+    # p.stdin.close()
+    # assert p.wait() == 0
     for cmd in cmds[1:]:
-        #sys.stderr.write("running: %s\n" % cmd.strip())
+        sys.stderr.write("running: %s\n" % cmd.strip())
         assert check_call(cmd.strip(), shell=True) == 0
 
 def handle_header(toks, out):
@@ -600,7 +600,7 @@ def main(args=sys.argv[1:]):
     conv_fqs_cmd = convert_fqs(args.fastqs)
     if args.fastqs[-1] == 'NA':
         args.fastqs = [args.fastqs[0]]
-	sys.stderr.write('args.fastqs: %s'%args.fastqs)
+    sys.stderr.write('args.fastqs: %s'%args.fastqs)
     bwa_mem(args.reference, conv_fqs_cmd, "", prefix=args.prefix,
              threads=args.threads, rg=args.read_group or
              rname(*args.fastqs), calmd=args.calmd,

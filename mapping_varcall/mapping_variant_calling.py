@@ -1,4 +1,4 @@
-#!/usr/bin/env pypy
+#!/usr/bin/env python
 __author__ = 'thomasvangurp'
 # Date created: 22/11/2014 (europe date)
 # Function: Pipeline for mapping reads to reference
@@ -14,6 +14,7 @@ import shutil
 import sys
 import pysam
 from Bio import SeqIO
+from Bio import Restriction
 
 
 def getScriptPath():
@@ -121,31 +122,26 @@ def run_bwameth(in_files,args):
     in_files['bam_out']['watson'] = os.path.join(args.output_dir,'watson.bam')
     in_files['bam_out']['crick'] = os.path.join(args.output_dir,'crick.bam')
     in_files['header'] = os.path.join(args.output_dir,'header.sam')
-    #TEMP COMMANDS!
-    # log = "get header"
-    # cmd = ["samtools view -H %s > %s"%
-    #        (('/Users/thomasvangurp/epiGBS/Baseclear/unfiltered_sequences/seqNNAtlE/Scabiosa/output_mapping/crick.bam'),
-    #         (os.path.join(args.tmpdir,'header.sam')))]
-    # run_subprocess(cmd,args,log)
-    # return in_files
-    #TEMP COMMANDS END!
+
     log = "index renamed reference using bwameth"
     ref = args.reference
-    cmd = ['bwameth.py index %s'%ref]
-    run_subprocess(cmd,args,log)
+    if not os.path.exists('%s.bwameth.c2t'%ref):
+        cmd = ['bwameth.py index %s'%ref]
+        run_subprocess(cmd,args,log)
 
     log = "run bwameth for merged reads"
     if args.sequences:
         add = '|head -n %s'%(4*int(args.sequences))
     else:
         add = ''
-    cmd = ['bwameth.py -t %s -p %s --reference %s <(pigz -cd %s %s) NA'%
-           (args.threads,
-            os.path.join(args.output_dir,'merged'),
-            ref,
-            args.merged,add
-            )]
-    run_subprocess(cmd,args,log)
+    if args.merged:
+        cmd = ['bwameth.py -t %s -p %s --reference %s <(pigz -cd %s %s) NA'%
+               (args.threads,
+                os.path.join(args.output_dir,'merged'),
+                ref,
+                args.merged,add
+                )]
+        run_subprocess(cmd,args,log)
 
     log = "run bwameth for non-merged reads"
     cmd = ['bwameth.py -t %s -p %s --reference %s <(pigz -cd %s %s) <(pigz -cd %s %s)'%
@@ -157,7 +153,7 @@ def run_bwameth(in_files,args):
             )]
     run_subprocess(cmd,args,log)
 
-    log = "get header"
+    log = "get start of header from pe.bam, add RG information using addRG function"
     cmd = ["samtools view -H %s > %s"%
            ((os.path.join(args.output_dir,'pe.bam')),
             (os.path.join(args.output_dir,'header.sam')))]
@@ -168,25 +164,40 @@ def run_bwameth(in_files,args):
     in_files = addRG(in_files,args)
 
     log = "merge bam files"
-    cmd = ["samtools merge -fc %s %s %s"%
-           ((os.path.join(args.output_dir,'combined.bam')),
-           "<(samtools reheader %s %s)"%(in_files['header'],os.path.join(args.output_dir,'merged.bam')),
-           "<(samtools reheader %s %s)"%(in_files['header'],os.path.join(args.output_dir,'pe.bam')))]
+    cmd = ["samtools merge -h %s -fcp -@ %s %s <(samtools reheader %s %s) <(samtools reheader %s %s)"%
+           (in_files['header'], args.threads, os.path.join(args.output_dir,'combined.bam'), in_files['header'],
+           os.path.join(args.output_dir, 'pe.bam'), in_files['header'],os.path.join(args.output_dir, 'merged.bam'))]
+
     run_subprocess(cmd,args,log)
-
-
+    log = "index combined bam file"
+    cmd = ["samtools index %s"%(os.path.join(args.output_dir,'combined.bam'))]
+    run_subprocess(cmd, args, log)
 
 
 
     log = "split in watson and crick bam file"
-    cmd = ["samtools view -h %s |tee "%
-           (os.path.join(args.output_dir,'combined.bam'))+
-           ">( grep '^@\|ST:Z:Watson\|ST:Z:watson' | samtools_old view -Shb - > %s)"%
-           (os.path.join(args.output_dir,'watson.bam'))+
-           "| grep '^@\|ST:Z:Crick\|ST:Z:crick' | samtools_old view -Shb - > %s"%
-           (os.path.join(args.output_dir,'crick.bam'))]
-
-    run_subprocess(cmd,args,log)
+    bam_input = pysam.AlignmentFile(os.path.join(args.output_dir,'combined.bam'),'rb')
+    watson_output = pysam.AlignmentFile(os.path.join(args.output_dir,'watson.bam'),'wb', template=bam_input)
+    crick_output = pysam.AlignmentFile(os.path.join(args.output_dir,'crick.bam'),'wb', template=bam_input)
+    for record in bam_input:
+        tag_dict = dict(record.tags)
+        try:
+            if (record.is_reverse and record.is_paired == False) or \
+                (record.is_paired and record.is_read1 and record.is_reverse == True) or \
+                (record.is_paired and record.is_read2 and record.is_reverse == False):
+                    if tag_dict['ST'].lower() == 'crick':
+                        watson_output.write(record)
+                    elif tag_dict['ST'].lower() == 'watson':
+                        crick_output.write(record)
+            else:
+                if tag_dict['ST'].lower() == 'watson':
+                    watson_output.write(record)
+                elif tag_dict['ST'].lower() == 'crick':
+                    crick_output.write(record)
+        except KeyError:
+            continue
+    watson_output.close()
+    crick_output.close()
 
     in_files['bam_out'] = {}
     in_files['bam_out']['watson'] = os.path.join(args.output_dir,'watson.bam')
@@ -248,66 +259,130 @@ def addRG(in_files,args):
     sam_out.close()
     return in_files
 
+def get_enz(enz):
+    """Get enzyme from biopython restriction library"""
+    for enzyme in Restriction.AllEnzymes:
+        if "%s"%(enzyme) == enz:
+            return enzyme
+
+
+def get_regions(contig,enzymes):
+    """return loci with start and end locations"""
+    out_sites = []
+    enz_1 = get_enz(enzymes[0])
+    enz_2 = get_enz(enzymes[1])
+    enz_1_sites = enz_1.search(contig.seq)
+    enz_2_sites = enz_2.search(contig.seq)
+    combined_sites = sorted(enz_1_sites + enz_2_sites)
+    for i in range(len(combined_sites)):
+        site_A = combined_sites[i]
+        try:
+            site_B = combined_sites[i+1]
+        except IndexError:
+            break
+        if site_B - site_A < 30:
+            continue
+        if site_A in enz_1_sites and site_B in enz_2_sites:
+            out_sites.append((site_A + 1, site_B - len(enz_2.site)))
+        elif site_A in enz_2_sites and site_B in enz_1_sites:
+            out_sites.append((site_A + 1, site_B - len(enz_1.site)))
+    return out_sites
+
 
 def remove_PCR_duplicates(in_files,args):
     """Remove PCR duplicates and non-paired PE-reads per cluster"""
     #check if random tag is present in fastq file, otherwise do not perform function
     # fastq_tags = open(in_files[''])
+    #TODO: implement sample specific PCR duplicate detection
     for strand,bamfile in in_files['bam_out'].items():
         clusters = SeqIO.parse(open(args.reference),'fasta')
         handle = pysam.AlignmentFile(bamfile,'rb')
         out_bam = tempfile.NamedTemporaryFile(suffix='uniq.bam',dir=args.output_dir,delete=False)
         out_handle = pysam.AlignmentFile(out_bam.name,'wb', template=handle)
-        dup_count = 0
-        read_count = 0
+        read_count = {}
         for cluster in clusters:
-            reads = handle.fetch(cluster.id)
-            if 'NNNNNNNN' in cluster._seq.upper():
-                cluster_is_paired = True
+            enzymes = ["Csp6I","NsiI"]
+            if len(cluster.seq) > 350:
+                #this must be a reference genome / chromosome: look for regions with mapping reads
+                regions = get_regions(cluster,enzymes)
             else:
-                cluster_is_paired = False
-            read_out = {}
-            for read in reads:
-                id,tag = read.tags[-3]
-                sample = read.tags[-1][1]
-                AS = read.tags[1][1]
-                if not read.is_proper_pair and cluster_is_paired:
-                    continue
-                if sample not in read_out:
-                    read_out[sample] = {}
-                if tag not in read_out[sample]:
-                    read_out[sample][tag] = {read.qname:AS}
+                regions = [None]
+            for region in regions:
+                if region:
+                    reads = handle.fetch(cluster.id,region[0],region[1])
                 else:
+                    reads = handle.fetch(cluster.id)
+                if 'NNNNNNNN' in cluster._seq.upper() and not region:
+                    cluster_is_paired = True
+                elif region:
+                    if region[1] - region[0] > 240:
+                        cluster_is_paired = True
+                    else:
+                        cluster_is_paired = False
+                else:
+                    cluster_is_paired = False
+                read_out = {}
+                for read in reads:
+                    tag_dict = dict(read.tags)
                     try:
-                        read_out[sample][tag][read.qname]+= AS
+                        tag = tag_dict['RN']
+                        sample = tag_dict['RG']
+                        AS = tag_dict['AS']
                     except KeyError:
-                        read_out[sample][tag][read.qname] = AS
-            #process read_out
-            if id != 'RN':
-                #random tag not yet implemented. return in_files and do not process further
-                return in_files
-            reads = handle.fetch(cluster.id)
-            for read in reads:
-                if not read.is_proper_pair and cluster_is_paired:
-                    continue
-                read_count += 1
-                if not read_count%100000:
-                    print '%s reads processed for %s strand'%(read_count,strand)
-                tag = read.tags[-3][1]
-                sample = read.tags[-1][1]
-                max_AS = max(read_out[sample][tag].values())
-                qname = [name for name,AS in read_out[sample][tag].items() if AS == max_AS][0]
-                if read.qname == qname:
-                    out_handle.write(read)
+                        break
+                    if not read.is_proper_pair and cluster_is_paired:
+                        continue
+                    if sample not in read_out:
+                        read_out[sample] = {}
+                    if tag not in read_out[sample]:
+                        read_out[sample][tag] = {read.qname:AS}
+                    else:
+                        try:
+                            read_out[sample][tag][read.qname]+= AS
+                        except KeyError:
+                            read_out[sample][tag][read.qname] = AS
+                #process read_out
+                if read_out == {} and 'RN' not in tag_dict:
+                    #random tag not yet implemented. return in_files and do not process further
+                    return in_files
+                if region:
+                    reads = handle.fetch(cluster.id, region[0], region[1])
                 else:
-                    dup_count += 1
-        try:
-            print '%s strand has %s reads %s duplicates which is %.1f%%'%(strand,
-            read_count ,dup_count,(100*float(dup_count)/(read_count)))
-        except ZeroDivisionError:
-            pass
-        out_bam.flush()
-        out_bam.close()
+                    reads = handle.fetch(cluster.id)
+                for read in reads:
+                    if not read.is_proper_pair and cluster_is_paired:
+                        continue
+                    # if not read_count%100000:
+                    #     print '%s reads processed for %s strand'%(read_count,strand)
+                    tag_dict = dict(read.tags)
+                    tag = tag_dict['RN']
+                    sample = tag_dict['RG']
+                    try:
+                        read_count[sample]['count'] += 1
+                    except KeyError:
+                        if sample not in read_count:
+                            read_count[sample] = {'count':1}
+                        else:
+                            read_count[sample]['count'] =  1
+                    max_AS = max(read_out[sample][tag].values())
+                    qname = [name for name,AS in read_out[sample][tag].items() if AS == max_AS][0]
+                    if read.qname == qname:
+                        out_handle.write(read)
+                    else:
+                        try:
+                            read_count[sample]['dup_count'] += 1
+                        except KeyError:
+                            read_count[sample]['dup_count'] = 1
+        for key , subdict in sorted(read_count.items()):
+            count = subdict['count']
+            if 'dup_count' in subdict:
+                dup_count = subdict['dup_count']
+                dup_pct = dup_count / float(count)
+                print '%s has %s reads and %s duplicates. Duplicate rate: %.2f%%'%(key,count,dup_count,100*dup_pct)
+            else:
+                print '%s has %s reads and 0 duplicates. Duplicate rate: 0%%' % (key, count)
+        # out_handle.flush()
+        out_handle.close()
         old_bam = in_files['bam_out'][strand]
         log = "move old bam file %s to %s"%(old_bam,old_bam.replace('.bam','.old.bam'))
         cmd = ["mv %s %s"%(old_bam,old_bam.replace('.bam','.old.bam'))]
@@ -476,7 +551,7 @@ def main():
     files = variant_calling_samtools(files, args)
     # files = run_Freebayes(files,args)
     #Step 4: Dereplicate all watson and crick reads
-    files = methylation_calling(files,args)
+    # files = methylation_calling(files,args)
     print 'done'
 if __name__ == '__main__':
     main()

@@ -10,6 +10,7 @@ import argparse
 import subprocess
 import tempfile
 import os
+import operator
 import gzip
 
 origWD = os.getcwd()
@@ -99,6 +100,7 @@ def run_subprocess(cmd,args,log_message):
 
 def merge_reads(args):
     "Unzip / Merge Watson and crick reads using pear"
+    #TODO: run only once for both watson and crick at same time
     out_files = {}
     for strand in ['watson','crick']:
         fwd_out = tempfile.NamedTemporaryFile(suffix=".fastq.gz",prefix=strand,dir=args.tmpdir)
@@ -108,14 +110,18 @@ def merge_reads(args):
             head = '|head -n %s'%(int(args.sequences)*4)
         else:
             head = ''
+        if args.forward.endswith('.gz'):
+            cat = 'pigz -cd '
+        else:
+            cat = 'cat '
         if strand == 'watson':
             grep_watson = "|grep 'Watson\|watson' -A 3 |sed '/^--$/d'"
-            cmd1 = ['gzcat '+args.forward + head + grep_watson + '|pigz -c >'+fwd_out.name]
-            cmd2 = ['gzcat '+args.reverse + head + grep_watson + '|pigz -c >'+rev_out.name]
+            cmd1 = [ cat + args.forward + head + grep_watson + '|pigz -c >'+fwd_out.name]
+            cmd2 = [ cat  + args.reverse + head + grep_watson + '|pigz -c >'+rev_out.name]
         else:
             grep_crick = "|grep 'Crick\|crick' -A 3 |sed '/^--$/d'"
-            cmd1 = ['gzcat '+args.forward + head + grep_crick + '|pigz -c  >'+fwd_out.name]
-            cmd2 = ['gzcat '+args.reverse + head + grep_crick + '|pigz -c  >'+rev_out.name]
+            cmd1 = [cat + args.forward + head + grep_crick + '|pigz -c  >'+fwd_out.name]
+            cmd2 = [cat + args.reverse + head + grep_crick + '|pigz -c  >'+rev_out.name]
         log = "Write input files to tmpdir using gzcat"
         run_subprocess(cmd1,args,log)
         run_subprocess(cmd2,args,log)
@@ -169,36 +175,40 @@ def reverse_complement(read):
     output = [nts[nt] for nt in read[::-1]]
     return ''.join(output)
 
-def join_fastq(r1,r2,outfile):
+def join_fastq(r1,r2,outfile,args):
     """join fastq files with 'NNNN' between forward and reverse complemented reverse read"""
-    if r1.endswith('gz'):
-        f1_handle = gzip.open(r1)
-        f2_handle = gzip.open(r2)
-    else:
-        f1_handle = open(r1)
-        f2_handle = open(r2)
-    if outfile.endswith('gz'):
-        out_handle = gzip.open(outfile,'w')
-    else:
-        out_handle = open(outfile,'w')
-    while True:
-        read1 = []
-        read2 = []
-        try:
-            for i in range(4):
-                read1.append(f1_handle.next())
-                read2.append(f2_handle.next())
-        except StopIteration:
-            break
-        out = '>%s\n%s'%(read1[0][1:-1],read1[1][:-1])
-        #add N nucleotides to read s1
-        out += 'N'*8
-        #add reverse complement of read 2 to read 1
-        #TODO: check if output file is correct in terms of strandedness
-        out += read2[1][:-1]
-        out += '\n'
-        out_handle.write(out)
-    out_handle.close()
+    cmd = ["paste <(pigz -cd %s |seqtk seq -A -) "%(r1) +
+           "<(pigz -cd %s |seqtk seq -A -)|cut -f1-5|sed '/^>/!s/\t/NNNNNNNN/g' |pigz -c > %s"%(r2,outfile)]
+    log = "Combine joined fastq file"
+    run_subprocess(cmd,args,log)
+    # if r1.endswith('gz'):
+    #     f1_handle = gzip.open(r1)
+    #     f2_handle = gzip.open(r2)
+    # else:
+    #     f1_handle = open(r1)
+    #     f2_handle = open(r2)
+    # if outfile.endswith('gz'):
+    #     out_handle = gzip.open(outfile,'w')
+    # else:
+    #     out_handle = open(outfile,'w')
+    # while True:
+    #     read1 = []
+    #     read2 = []
+    #     try:
+    #         for i in range(4):
+    #             read1.append(f1_handle.next())
+    #             read2.append(f2_handle.next())
+    #     except StopIteration:
+    #         break
+    #     out = '>%s\n%s'%(read1[0][1:-1],read1[1][:-1])
+    #     #add N nucleotides to read s1
+    #     out += 'N'*8
+    #     #add reverse complement of read 2 to read 1
+    #     #TODO: check if output file is correct in terms of strandedness
+    #     out += read2[1][:-1]
+    #     out += '\n'
+    #     out_handle.write(out)
+    # out_handle.close()
     return True
 
 def join_non_overlapping(in_files,args):
@@ -206,7 +216,7 @@ def join_non_overlapping(in_files,args):
     for strand in ['watson','crick']:
         #TODO: Trim end of R1 read length for demultiplexing? Different bc lengths
         out_file = in_files[strand]['single_R1_demethylated'].replace('unassembled.forward.fastq','joined.fa')
-        join_fastq(in_files[strand]['single_R1_demethylated'],in_files[strand]['single_R2_demethylated'],out_file)
+        join_fastq(in_files[strand]['single_R1_demethylated'],in_files[strand]['single_R2_demethylated'],out_file,args)
         #store output files in dictionary
         out_name = 'demethylated_joined'
         in_files[strand][out_name] = out_file
@@ -332,153 +342,147 @@ def combine_and_convert(in_files,args):
     in_files['combined']["joined_combined_CTGA"] = out_CTGA
     return in_files
 
+def make_binary_output(in_files,args):
+    """make binary output sequence for uc generation"""
+    #TODO: implement this routine instead of combine_and_convert
+    watson_handle = open(in_files['watson']['merged_demethylated_derep'],'r')
+    crick_handle = open(in_files['crick']['merged_demethylated_derep'],'r')
+    #joined entries
+    watson_handle_join = open(in_files['watson']['demethylated_joined_derep'],'r')
+    crick_handle_join = open(in_files['crick']['demethylated_joined_derep'],'r')
+    uc_input_fa = tempfile.NamedTemporaryFile(suffix=".fa", prefix='uc_input', dir=args.tmpdir, delete=False)
+    in_files['combined'] = {'uc_input_fa':uc_input_fa.name}
+    output = open(in_files['combined']['uc_input_fa'],'w')
+    for i,handle in enumerate([watson_handle,crick_handle,watson_handle_join,crick_handle_join]):
+        if i == 0 or i == 2:
+            name_start = '>w_'
+        else:
+            name_start = '>c_'
+        for line in handle:
+            if line.startswith('>'):
+                try:
+                    seq = seq.replace('C','T').replace('G','A')
+                    out = name + '\n' + seq + '\n'
+                    output.write(out)
+                except NameError:
+                    pass
+                name = '%s'%name_start
+                seq = ''
+            else:
+                name += line.rstrip('\n')
+                seq += line.rstrip('\n')
+    return in_files
+
 def make_uc(in_files,args):
     """run usearch to create uc file"""
     #run usearch to create uc file
-    out_CTGA = in_files['combined']["merged_combined_CTGA"]
-    merged_uc = tempfile.NamedTemporaryFile(suffix=".uc",prefix='derep_merged',dir=args.tmpdir,delete=False)
-    joined_uc = tempfile.NamedTemporaryFile(suffix=".uc",prefix='derep_joined',dir=args.tmpdir,delete=False)
-    # TODO: vsearch does not give strand as output in uc. This is required for getting correct bam file
-    # check forum https://groups.google.com/forum/#!searchin/vsearch-forum/derep|sort:date/vsearch-forum/7N7r8odTT2I/z4T4aSe6DQAJ
-    cmd = [usearch + ' -derep_fulllength %s -strand both -uc %s'%
-    (out_CTGA,merged_uc.name)]
-    log = "Make uc output for merged reads"
+    fasta_input = in_files['combined']['uc_input_fa']
+    uc_out = tempfile.NamedTemporaryFile(suffix=".uc",prefix='combined_out',dir=args.tmpdir,delete=False)
+    cmd = [vsearch + ' -derep_fulllength %s -strand both -uc %s'%(fasta_input,uc_out.name)]
+    log = "Make uc output for reads with original sequences in read header"
     run_subprocess(cmd,args,log)
-    in_files['combined']["derep_merged"] = merged_uc.name
-    #TODO: do the same processing on the joined files here.
-    out_CTGA = in_files['combined']["joined_combined_CTGA"]
-    cmd = [usearch + ' -derep_fulllength %s -strand both -uc %s'%
-    (out_CTGA,joined_uc.name)]
-    log = "Make uc output for joined reads"
-    run_subprocess(cmd,args,log)
-    in_files['combined']["derep_joined"] = joined_uc.name
+    in_files['combined']["uc_out"] = uc_out.name
     return in_files
 
-def make_sam(in_files,args):
-    """Run mergeBSv3.py to make a sam file of clusters"""
-    merged_sam = tempfile.NamedTemporaryFile(suffix=".sam",prefix='merged',dir=args.tmpdir)
-    joined_sam = tempfile.NamedTemporaryFile(suffix=".sam",prefix='joined',dir=args.tmpdir)
-    cmd1 = ['%s -s %s -c %s --clusters %s --samout %s'%
-           (mergeBSv3,
-            in_files['combined']['merged_combined'],
-           in_files['crick']['merged_demethylated_derep'],
-           in_files['combined']['derep_merged'],
-           merged_sam.name)]
-    cmd2 = ['%s -s %s -c %s --clusters %s --samout %s'%
-           (mergeBSv3,
-            in_files['combined']['joined_combined'],
-           in_files['crick']['demethylated_joined_derep'],
-           in_files['combined']['derep_joined'],
-           joined_sam.name)]
-    log = "Make sam output for merged reads"
-    run_subprocess(cmd1,args,log)
-    log = "Make uc output for joined reads"
-    run_subprocess(cmd2,args,log)
-    in_files['sam_out'] = {}
-    in_files['sam_out']['merged'] = merged_sam.name
-    in_files['sam_out']['joined'] = joined_sam.name
-    log = "create sorted and indexed bam for next step"
-    cmd1 = ["samtools_old view -Shb %s|samtools_old sort - %s;samtools index %s"%
-           (merged_sam.name,merged_sam.name.replace('.sam',''),merged_sam.name.replace('.sam','.bam'))]
-    cmd2 = ["samtools_old view -Shb %s|samtools_old sort - %s;samtools index %s"%
-           (joined_sam.name,joined_sam.name.replace('.sam',''),joined_sam.name.replace('.sam','.bam'))]
-    run_subprocess(cmd1,args,log)
-    run_subprocess(cmd2,args,log)
-    in_files['sam_out']['merged'] = merged_sam.name.replace('.sam','.bam')
-    in_files['sam_out']['joined'] = joined_sam.name.replace('.sam','.bam')
+
+def get_ref(clusters):
+    """Generate reference from sequences that cluster together"""
+    output_count = {}
+    id = int(clusters[0][1]) + 1
+    transform = {'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A', 'N': 'N'}
+    for cluster in clusters:
+        direction = cluster[4]
+        seq = cluster[8][2:]
+        strand = cluster[8][0]
+        if direction != '-':
+            pass
+        else:
+            #get reverse complement
+            seq = [transform[nt] for nt in seq][::-1]
+            if strand == 'w':
+                strand = 'c'
+            else:
+                strand = 'w'
+        for i,nt in enumerate(seq):
+            try:
+                output_count[i][strand][nt] += 1
+            except KeyError:
+                if i not in output_count:
+                    output_count[i] = {strand:{nt:1}}
+                if strand not in output_count[i]:
+                    output_count[i][strand] = {nt:1}
+                if nt not in output_count[i][strand]:
+                    output_count[i][strand][nt] = 1
+    output_fasta = '>%s\n'%id
+    for i in sorted(output_count.keys()):
+        try:
+            watson_nt = max(output_count[i]['w'].iteritems(), key=operator.itemgetter(1))[0]
+            crick_nt = max(output_count[i]['c'].iteritems(), key=operator.itemgetter(1))[0]
+        except KeyError:
+            return None
+        if watson_nt == crick_nt:
+            output_fasta += watson_nt
+        elif watson_nt == 'G' and crick_nt == 'A':
+            output_fasta += watson_nt
+        elif crick_nt == 'C' and watson_nt == 'T':
+            output_fasta += crick_nt
+        elif watson_nt == 'N' and crick_nt != 'N':
+            output_fasta += crick_nt
+        elif watson_nt != 'N' and crick_nt == 'N':
+            output_fasta += watson_nt
+        else:
+            output_fasta += 'N'
+    output_fasta += '\n'
+    return output_fasta
+
+
+
+def make_ref_from_uc(in_files,args):
+    """make reference directly from uc output"""
+    #ref_handle contains non-clustered output sequences
+    uc_handle = open(in_files["combined"]["uc_out"],'r')
+    ref_output = tempfile.NamedTemporaryFile(suffix=".fa", prefix='tmp_ref', dir=args.tmpdir, delete=True)
+    ref_handle = open(ref_output.name,'w')
+    clusters = []
+    for line in uc_handle:
+        if line.startswith('H') or line.startswith('S'):
+            split_line = line.split('\t')
+            cluster_id = int(split_line[1])
+            try:
+                if cluster_id != int(clusters[-1][1]):
+                    ref = get_ref(clusters)
+                    if ref:
+                        ref_handle.write(ref)
+                    clusters = []
+            except NameError:
+                pass
+            except IndexError:
+                pass
+            clusters.append(split_line)
+    ref = get_ref(clusters)
+    if ref:
+        ref_handle.write(ref)
+    ref_handle.close()
+
+    #sort output by length
+    cmd = ['vsearch -sortbylength %s --output %s'%(ref_output.name,args.consensus)]
+    log = "sort sequences by length"
+    run_subprocess(cmd, args, log)
     return in_files
 
-def split_output(in_files,args):
-    """Split output in indexed Watson and crick  bam files"""
-    #Create bam file for watson and crick sam for both sam files
-    watson_merged = tempfile.NamedTemporaryFile(suffix=".bam",prefix='watson_merged',dir=args.tmpdir,delete=False)
-    crick_merged = tempfile.NamedTemporaryFile(suffix=".bam",prefix='crick_merged',dir=args.tmpdir,delete=False)
-    watson_joined = tempfile.NamedTemporaryFile(suffix=".bam",prefix='watson_joined',dir=args.tmpdir,delete=False)
-    crick_joined = tempfile.NamedTemporaryFile(suffix=".bam",prefix='crick_joined',dir=args.tmpdir,delete=False)
-    cmd1 = ["samtools_old view -h %s | tee >(grep '^@\|watson' |"%(in_files['sam_out']['merged'])+
-            "samtools_old view -Shb - |samtools_old sort -o - %s > %s )|"%
-            (watson_merged.name.replace('.bam',''),watson_merged.name)+
-            "grep '^@\|crick' |samtools_old view -Shb - |samtools_old sort -o - %s > %s"%
-            (crick_merged.name.replace('.bam',''),crick_merged.name)]
-    cmd2 = ["samtools_old view -h %s | tee >(grep '^@\|watson' |"%(in_files['sam_out']['joined'])+
-            "samtools_old view -Shb - |samtools_old sort -o - %s > %s )|"%
-            (watson_joined.name.replace('.bam',''),watson_joined.name)+
-            "grep '^@\|crick' |samtools_old view -Shb - |samtools_old sort -o - %s > %s"%
-            (crick_joined.name.replace('.bam',''),crick_joined.name)]
-    log = "make watson sorted and indexed bam"
-    run_subprocess(cmd1,args,log)
-    log = "make crick sorted and indexed bam"
-    run_subprocess(cmd2,args,log)
-    in_files['sam_out']['watson_joined'] = watson_joined.name
-    in_files['sam_out']['crick_joined'] = crick_joined.name
-    in_files['sam_out']['watson_merged'] = watson_merged.name
-    in_files['sam_out']['crick_merged'] = crick_merged.name
-    return in_files
 
-def get_consensus(in_files,args):
-    """ 1. Make consensus using vcfutils.pl for both watson and crick
-        2. Combine consensus to recreate original ref
-        3. sort by length for subsequent processing"""
-    in_files['consensus'] = {}
-    cons_out = tempfile.NamedTemporaryFile(suffix=".fq",prefix='cons_out',dir=args.tmpdir,delete=False)
-    for type in ['merged','joined']:
-        crick_out = tempfile.NamedTemporaryFile(suffix=".fq",prefix='cns_crick',dir=args.tmpdir)
-        watson_out = tempfile.NamedTemporaryFile(suffix=".fq",prefix='cns_watson',dir=args.tmpdir)
-        consensus = tempfile.NamedTemporaryFile(suffix=".fq",prefix='consensus',dir=args.tmpdir)
-        cons_sort = tempfile.NamedTemporaryFile(suffix=".fq",prefix='cons_sort',dir=args.tmpdir)
-        #TODO: find way to make sure new samtools versions play well with this command trick..
-        cmd1 = ['samtools_old mpileup -u %s | bcftools_old view -cg - | %s vcf2fq |%s seq -A - > %s'%
-                (in_files['sam_out']['crick_%s'%type],vcfutils,seqtk,crick_out.name)]
-        cmd2 = ['samtools_old mpileup -u %s | bcftools_old view -cg - | %s vcf2fq |%s seq -A -  > %s'%
-               (in_files['sam_out']['watson_%s'%type],vcfutils,seqtk,watson_out.name)]
-        log = "get consensus crick %s"%type
-        run_subprocess(cmd1,args,log)
-        log = "get consensus watson %s"%type
-        run_subprocess(cmd2,args,log)
-        in_files['consensus']['watson_%s'%(type)]=watson_out.name,
-        in_files['consensus']['crick_%s'%(type)]=crick_out.name,
-        in_files['consensus']['consensus_%s'%(type)]=cons_sort.name
-
-        #combine watson and crick
-        log = "combining watson and crick fastq for %s reads"%type
-        cmd = ['%s -w %s -c %s -b %s -o %s'%
-               (create_consensus,
-                watson_out.name,
-                crick_out.name,
-                in_files['sam_out'][type],
-                consensus.name
-               )]
-        run_subprocess(cmd,args,log)
-        log = "Append consensus %s out to output"%type
-        cmd = ["cat %s |tee >(wc -l) >> %s"%(consensus.name,cons_out.name)]
-        run_subprocess(cmd,args,log)
-
-    log = "sort combined consensus %s on length for vsearch"%type
-    cmd = [vsearch + " -sortbylength %s --output %s"%(cons_out.name,args.consensus)]
-    try:
-        result = run_subprocess(cmd,args,log)
-    except Exception:
-        print Exception
-        pass
-
-    # log = "Write combined output to final destination"
-    # cmd = ["cp %s %s"%(cons_out.name,args.consensus)]
-    # run_subprocess(cmd,args,log)
-    in_files['consensus']['consensus'] = args.consensus
-    return in_files
 
 def cluster_consensus(in_files,args):
     "Cluster concensus with preset id"
-    cluster_cons = args.consensus_cluster
     cmd = [vsearch+" -cluster_smallmem %s -id 0.95 -centroids %s -sizeout -strand both"%
-           (in_files['consensus']['consensus'],
-           cluster_cons)]
+           (args.consensus,
+            args.consensus_cluster)]
     log = "Clustering consensus with 95% identity"
     run_subprocess(cmd,args,log)
-    in_files['consensus']['consensus_clustered'] = cluster_cons
+    # in_files['consensus']['consensus_clustered'] = args.consensus_cluster
     log = "rename cluster_cons for bwa_meth compatibility"
-    cluster_renamed = cluster_cons.replace('.fa','.renamed.fa')
-    cmd = ['cat %s | rename_fast.py -n > %s'%(cluster_cons, cluster_renamed)]
+    cluster_renamed = args.consensus_cluster.replace('.fa','.renamed.fa')
+    cmd = ['cat %s | rename_fast.py -n > %s'%(args.consensus_cluster, cluster_renamed)]
     run_subprocess(cmd,args,log)
     return in_files
 
@@ -508,19 +512,13 @@ def main():
     files = trim_and_zip(files,args)
     #Step 4: Dereplicate all watson and crick reads
     files = dereplicate_reads(files,args)
-    #Step 5 Combine crick and watson and create a AT only file
-    files = combine_and_convert(files,args)
+    #Step 5 create binary A/T only fasta output, with headers containing original sequence
+    files = make_binary_output(files,args)
     #Step 6: create uc file
     files = make_uc(files,args)
-    #Step 7: run mergeBSv3.py
-    files = make_sam(files,args)
-    #Step 8: Split output in indexed Watson and crick  bam files
-    files = split_output(files,args)
-    #Step 9:  Get consensus sequence from both bam files using mpileup,bcfview and vcfutils.pl
-    #Step 9b: Combine sequences to get consensus
-    files = get_consensus(files,args)
-    #Step 10: cluster consensus with 95% identity and rename for bwameth compatibility.
+    #Step 7: make reference directly from single uc file
+    files = make_ref_from_uc(files,args)
+    #step 8: Cluster consensus
     files = cluster_consensus(files,args)
-    print 'boe'
 if __name__ == '__main__':
     main()
