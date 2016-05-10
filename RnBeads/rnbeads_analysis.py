@@ -106,15 +106,17 @@ def clean_source_package(args):
     Cleans the RnBeads source package.
     """
     # Replaces the appended assemblies.R code with the original one.
-    script_dir = os.path.dirname(os.path.realpath(__file__))  # Gets the folder destination of the current script.
+    if args.script_dir == None:
+        script_dir = os.path.dirname(os.path.realpath(__file__))
+        script_dir = script_dir.replace(' ', '\ ')
+    else:
+        script_dir = args.script_dir  # Gets the folder destination of the current script.
     assemblies_file = os.path.join(script_dir, "templates", "assemblies.R")
     source_directory = os.path.join(script_dir, "RnBeads", "R", "assemblies.R")
     copyfile(assemblies_file, source_directory)
 
     # Removes the chrom sizes file from the source code
     chrom_file = os.path.join(script_dir, "RnBeads", "inst", "extdata", "chromSizes", args.assembly_code + ".chrom.sizes")
-    os.remove(chrom_file)
-
 
 def run_subprocess(cmd, log_message):
     """
@@ -245,6 +247,11 @@ def run_analysis(args):
         "cores": args.cores,
         "time": cur_time}
     # Puts the dict in the file.
+    if args.outpath != None:
+        script_dict["directory"] = args.outpath
+        rnbeads_outputdir = os.path.join(args.outpath,'analysis')
+        if not os.path.exists(rnbeads_outputdir):
+            os.mkdir(rnbeads_outputdir)
     template_script = open(os.path.join(script_dir, "templates", "run.analysis.R")).read() % script_dict
     # Write filled in analysis R script to tmp dir.
     r_script = open(os.path.join(args.temp_directory, "run.analysis.R"), "w")
@@ -573,6 +580,7 @@ def parse_args():
                                File syntax: e.g. chr1\nchr2\n.
                                The name of the annotation will be the same as the filename.""")
     analysis_only.add_argument('-tmp', '--temp_directory', help='temp directory', default="/tmp/")
+    analysis_only.add_argument('-outpath', '--outpath', help='Path for output', default="/mnt/")
     analysis_only.add_argument('-s', '--species_name', help='Name of the species belonging to the genome')
     analysis_only.add_argument('-g', '--genus_name', help='Name of the genus from where the organism stems from')
     analysis_only.add_argument('-v', '--version', help='Version of the genome to be forged', default="1")
