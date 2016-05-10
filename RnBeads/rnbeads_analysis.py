@@ -9,6 +9,7 @@ import argparse
 import prepare_analysis
 import check_file_formats
 import time
+import platform
 
 __author__ = 'Bjorn Wouters'
 __email__ = "bjorn-wouters@hotmail.com"
@@ -473,19 +474,21 @@ def fasta_to_2bit(args):
     """
     Coverts the given fasta to a .2bit file via the faToTwoBit executable.
     """
-    #TODO: build fato2bit from source on installation to make sure it runs.
     #Source for fat2bit for mac osx is here: http://hgdownload.cse.ucsc.edu/admin/exe/macOSX.x86_64/
-    #TODO: or list dependency in help and check for executable upon running analysis.
     script_dir = os.path.dirname(os.path.realpath(__file__))  # Gets the folder destination of the current script.
     script_dir = script_dir.replace(' ','\ ')
     sys.stdout.write("""Adding the genome of %s to the RnBeads package\n
                 Starting with converting the .fasta to a .2bit file.\n""" % args.species_name)
     fasta = args.fasta
+    if platform.system() == "Linux":
+        tool_name = "faToTwoBit_linux"
+    else:
+        tool_name = "faToTwoBit_mac"
     twobit_name = os.path.basename(os.path.splitext(fasta)[0])+'.2bit'
     twobit_file = os.path.join(args.temp_directory, twobit_name)
     # Writes the fasta to a twobit file in the tmp folder and is deleted after the analysis.
     log_message = "Converts the given fasta to a .2bit file"
-    command = " ".join([os.path.join(script_dir, "templates/faToTwoBit"), fasta, twobit_file])
+    command = " ".join([os.path.join(script_dir, "templates/" + tool_name), fasta, twobit_file])
     run_subprocess(command, log_message)
     return twobit_file
 
