@@ -188,12 +188,12 @@ def run_subprocess(cmd,args,log_message):
 
 def process_reads(args):
     """process reads and make them ready for mapping with STAR"""
-    watson_merged = tempfile.NamedTemporaryFile(suffix=".fastq.gz", prefix='watson_merged', dir=args.tmpdir, delete=False)
-    crick_merged = tempfile.NamedTemporaryFile(suffix=".fastq.gz", prefix='crick_merged', dir=args.tmpdir, delete=False)
-    watson_r1 = tempfile.NamedTemporaryFile(suffix=".fastq.gz", prefix='watson_r1', dir=args.tmpdir, delete=False)
-    crick_r1 = tempfile.NamedTemporaryFile(suffix=".fastq.gz", prefix='crick_r1', dir=args.tmpdir, delete=False)
-    watson_r2 = tempfile.NamedTemporaryFile(suffix=".fastq.gz", prefix='watson_r2', dir=args.tmpdir, delete=False)
-    crick_r2 = tempfile.NamedTemporaryFile(suffix=".fastq.gz", prefix='crick_r2', dir=args.tmpdir, delete=False)
+    watson_merged = tempfile.NamedTemporaryFile(suffix=".fastq", prefix='watson_merged', dir=args.tmpdir, delete=False)
+    crick_merged = tempfile.NamedTemporaryFile(suffix=".fastq", prefix='crick_merged', dir=args.tmpdir, delete=False)
+    watson_r1 = tempfile.NamedTemporaryFile(suffix=".fastq", prefix='watson_r1', dir=args.tmpdir, delete=False)
+    crick_r1 = tempfile.NamedTemporaryFile(suffix=".fastq", prefix='crick_r1', dir=args.tmpdir, delete=False)
+    watson_r2 = tempfile.NamedTemporaryFile(suffix=".fastq", prefix='watson_r2', dir=args.tmpdir, delete=False)
+    crick_r2 = tempfile.NamedTemporaryFile(suffix=".fastq", prefix='crick_r2', dir=args.tmpdir, delete=False)
     files = {'merged': (args.merged, watson_merged.name, ['C','T'], crick_merged.name, ['G','A']),
              'reads_forward': (args.reads_R1, watson_r1.name, ['C', 'T'], crick_r1.name, ['G', 'A']),
              'reads_reverse': (args.reads_R2, watson_r2.name, ['G', 'A'], crick_r2.name, ['C', 'T'])}
@@ -220,14 +220,14 @@ def process_reads(args):
                 break
             if 'watson' in read[0].lower():
                 convert_seq = read[1].replace(watson_convert[0], watson_convert[1])
-                header = '@%s' % (read[0][1:-1].replace(' ', '|').replace('\t', '|'))
-                header += '|' + read[1]
-                watson_out_handle.write(header + convert_seq + '+\n' + read[3])
+                # header = '@%s' % (read[0][1:-1].replace(' ', '|').replace('\t', '|'))
+                # header += '|' + read[1]
+                watson_out_handle.write(read[0] + convert_seq + '+\n' + read[3])
             else:
                 convert_seq = read[1].replace(crick_convert[0], crick_convert[1])
-                header = '@%s' % (read[0][1:-1].replace(' ', '|').replace('\t', '|'))
-                header += '|' + read[1]
-                crick_out_handle.write(header + convert_seq + '+\n' + read[3])
+                # header = '@%s' % (read[0][1:-1].replace(' ', '|').replace('\t', '|'))
+                # header += '|' + read[1]
+                crick_out_handle.write(read[0] + convert_seq + '+\n' + read[3])
         watson_out_handle.close()
         crick_out_handle.close()
     return files
@@ -327,6 +327,7 @@ def map_STAR(args):
             cmd += " --outSAMattributes NH HI NM MD AS --outSAMtype BAM Unsorted"
             cmd += " --outFileNamePrefix %s" % (os.path.join(args.output_dir,'%s_%s'%(type,strand)))
             cmd += " --outStd BAM_Unsorted"
+            cmd += " --outSAMreadID Number"
             #outFilterScoreMinOverLread : float: sam as outFilterMatchNmin, but normalized to the read length (sum of mates’ lengths for paired-end reads)
             #outFilterMatchNminOverLread: float: same as outFilterScoreMin, but normalized to read length (sum of mates’ lengths for paired-end reads)
 
@@ -335,7 +336,7 @@ def map_STAR(args):
             # –outFilterMultimapNmax 1 int: maximum number of loci the read is allowed to map to. Alignments (all of
             # them) will be output only if the read maps to no more loci than this value.
             cmd += " -–outFilterMultimapNmax 1 --outFilterMismatchNoverLmax 0.95"
-
+            #make sure we have a bam file sorted by name
             cmd += "|sambamba sort -N -m 4GB -t 6 -o %s.namesorted.bam /dev/stdin" % \
                    (os.path.join(args.output_dir,'%s_%s'%(type,strand)))
             log = "run STAR for % strand on %s reads"%(strand, type)
@@ -343,6 +344,49 @@ def map_STAR(args):
             log = "write final log of STAR to normal log"
             cmd = "cat %s " % os.path.join(args.output_dir, '%s_%s' % (type, strand) + 'Log.final.out')
             run_subprocess([cmd], args, log)
+    return args
+
+def make_bam(args):
+    for strand in ['watson', 'crick']:
+        for type in ['merged', 'joined']:
+            bam_file = os.path.join(args.output_dir,'%s_%s.namesorted.bam' % (type, strand))
+            if type == 'merged':
+                fastq_file  = open('/tmp/watson_mergedfNqeem.fastq','r')
+            cmd = "samtools view -@ 4 %s" % bam_file
+
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True,
+                                 executable='/bin/bash')
+            out_file = open('/tmp/test.sam','w')
+            record, previous_record = None, None
+            records_processed = 0
+            for line in p.stdout:
+                split_line = line.rstrip('\n').split('\t')
+                if split_line[0] == previous_record:
+                    #multimapping read is present, ignore
+                    record = None
+                    continue
+                else:
+                    if record:
+                        out_file.write(record)
+                while True:
+                    fastq_entry = [fastq_file.readline() for i in range(0, 4)]
+                    records_processed += 1
+                    try:
+                        assert records_processed == int(split_line[0])
+                        break
+                    except AssertionError:
+                        pass
+                read_name = fastq_entry[0].replace(' ', '\t').split('\t')[0]
+                read_tags = fastq_entry[0].replace(' ', '\t').split('\t')[1:]
+
+                line_out = [read_name] + split_line[1:9] + [fastq_entry[1].rstrip('\n')] + [split_line[10]]
+                line_out += split_line[11:]
+                line_out += read_tags
+                previous_record = split_line[0]
+                record = '\t'.join(line_out)
+            p.communicate()
+            out_file.close()
+            break
 
 
 def parse_sam(in_file, out_file):
@@ -462,11 +506,12 @@ def main():
     args = parse_args()
     log = open(args.log,'w')
     log.write("started run\n")
+    make_bam(args)
     #2 make reference genome fo STAR in appropriate directory
     # args = index_STAR(args)
     # args = map_STAR(args)
-    args = make_header(args)
-    bam_output(args)
+    # args = make_header(args)
+    # bam_output(args)
 if __name__ == '__main__':
     main()
 
