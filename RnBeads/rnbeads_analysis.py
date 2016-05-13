@@ -10,6 +10,8 @@ import prepare_analysis
 import check_file_formats
 import time
 import platform
+from Bio import SeqIO, Seq
+from Bio.Alphabet import generic_dna
 
 __author__ = 'Bjorn Wouters'
 __email__ = "bjorn-wouters@hotmail.com"
@@ -29,17 +31,6 @@ Work to be done:
 - Adding of more options for the analysis instead of using the default.
 - Automatic sample file creation.
 """
-
-import subprocess
-import sys
-import os
-import platform
-from shutil import rmtree, move, copyfile
-import tarfile
-import argparse
-import prepare_analysis
-import check_file_formats
-import time
 
 
 def main():
@@ -101,6 +92,7 @@ def main():
         clear_tmp(tmp_files)
 
 
+
 def clean_source_package(args):
     """
     Cleans the RnBeads source package.
@@ -113,7 +105,8 @@ def clean_source_package(args):
 
     # Removes the chrom sizes file from the source code
     chrom_file = os.path.join(script_dir, "RnBeads", "inst", "extdata", "chromSizes", args.assembly_code + ".chrom.sizes")
-    os.remove(chrom_file)
+    if os.path.isdir(chrom_file):
+        os.remove(chrom_file)
 
 
 def run_subprocess(cmd, log_message):
@@ -523,20 +516,57 @@ def make_rnbeads_description(twobit_file, args):
     return description
 
 
+def convert_fasta(args):
+    unconverted_fasta = SeqIO.parse(open(args.fasta), 'fasta')
+    output_fasta = os.path.join(args.temp_directory, "chg.fasta")
+    with open(output_fasta, "w") as converted_fasta:
+        for record in unconverted_fasta:
+            sequence = list(record.seq)
+            converted_sequence = str()
+            # sequence = str(record.seq)
+            for i, nucleotide in enumerate(sequence):
+                converted_sequence += str(sequence[i])
+                seq_window = sequence[i:i+3]
+                if "C" in seq_window and "G" in seq_window:
+                    if len(seq_window) == 3:
+                        if seq_window[0:2] == ["C", "G"]:
+                            if seq_window[2] == "G":
+                                converted_sequence += "CG"
+                                del sequence[i]
+                                del sequence[+1]
+                            else:
+                                sequence.insert(i+1, "A")
+                        elif seq_window[0] == "C" and seq_window[2] == "G":
+                            del sequence[i+1]
+                    elif len(seq_window) == 2:
+                        if seq_window == ["C", "G"]:
+                            sequence.insert(i+1, "A")
+
+            record.seq = Seq.Seq(converted_sequence, generic_dna)
+            SeqIO.write(record, converted_fasta, "fasta")
+
+    return converted_fasta.name
+
+
 def fasta_to_2bit(args):
     """
     Coverts the given fasta to a .2bit file via the faToTwoBit executable.
     """
-    #Source for fat2bit for mac osx is here: http://hgdownload.cse.ucsc.edu/admin/exe/macOSX.x86_64/
+    if args.chg:
+        fasta = convert_fasta(args)
+    else:
+        fasta = args.fasta
+
+    # Source for fat2bit for mac osx is here: http://hgdownload.cse.ucsc.edu/admin/exe/macOSX.x86_64/
     sys.stdout.write("""Adding the genome of %s to the RnBeads package\n
                 Starting with converting the .fasta to a .2bit file.\n""" % args.species_name)
     #TODO: or list dependency in help and check for executable upon running analysis.
-    if args.script_dir == None:
+    if not args.script_dir:
         script_dir = os.path.dirname(os.path.realpath(__file__))
         script_dir = script_dir.replace(' ', '\ ')
     else:
-        script_dir = args.script_dir # Gets the folder destination of the current script.
-    fasta = args.fasta
+        script_dir = args.script_dir  # Gets the folder destination of the current script.
+
     if platform.system() == "Linux":
         tool_name = "faToTwoBit_linux"
     else:
@@ -547,9 +577,9 @@ def fasta_to_2bit(args):
     log_message = "Converts the given fasta to a .2bit file"
 
     if platform.system() == 'Linux':
-        command = " ".join([os.path.join(script_dir, "templates/faToTwoBit_linux"), fasta, twobit_file])
+        command = " ".join([os.path.join(script_dir, "templates/" + tool_name), fasta, twobit_file])
     else:
-        command = " ".join([os.path.join(script_dir, "templates/faToTwoBit"), fasta, twobit_file])
+        command = " ".join([os.path.join(script_dir, "templates/" + tool_name), fasta, twobit_file])
 
     run_subprocess(command, log_message)
     return twobit_file
@@ -563,6 +593,7 @@ def parse_args():
      Or, if already done, run only the analysis.""")
     subparsers = parser.add_subparsers(help='Choose your analysis type:')
     #TODO: add option to list already run analysis for existing genomes. Skip existing genomes.
+
     # If chosen: only the run_analysis function will be executed.
     analysis_only = subparsers.add_parser('analysis_only', help="""If assembly and genome already added:
     analysis only is possible.""")
@@ -580,6 +611,8 @@ def parse_args():
                                                               package""")
     analysis_only.add_argument('-lp', '--lib_path', help='Library installation folder for R packages.', default="c()")
     analysis_only.add_argument('-o', '--output', help='Output file (needed for galaxy)', default=None)
+    analysis_only.add_argument('-chg', '--chg', help='If used, RnBeads will analyse ChG methlylation instead of CG"; ',
+                               default=None, action='store_true')
 
     # If chosen all the main functions will be executed.
     add_and_analysis = subparsers.add_parser('add_and_analysis', help="""Add genome and assembly AND analyse it
@@ -606,6 +639,9 @@ def parse_args():
     add_and_analysis.add_argument('-mr', '--minimal_reads', help='Number of minimal reads per sample on one CpG site',
                                   default=5)
     add_and_analysis.add_argument('-sd', '--script_dir', help='directory of script')
+    add_and_analysis.add_argument('-chg', '--chg', help='If used, RnBeads will analyse ChG methlylation instead of CG"; ',
+                                  default=None, action='store_true')
+
     # If chosen: every main function fill be executed except for the run_analysis function.
     add_only = subparsers.add_parser('add_only', help="Only add the genome and assembly to the RnBeads package.")
     add_only.add_argument('-f', '--fasta', help='Fasta input file of the new genome', default=None)
@@ -619,7 +655,8 @@ def parse_args():
     add_only.add_argument('-lp', '--lib_path', help='Library installation folder for R packages.', default="c()")
     add_only.add_argument('-mr', '--minimal_reads', help='Number of minimal reads per sample on one CpG site',
                           default=5)
-
+    add_only.add_argument('-chg', '--chg', help='If used, RnBeads will analyse ChG methlylation instead of CG"; ', default=None,
+                          action='store_true')
     # Parses the arguments to the args variable.
     args = parser.parse_args()
     return args
