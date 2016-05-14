@@ -98,7 +98,7 @@ def clean_source_package(args):
     Cleans the RnBeads source package.
     """
     # Replaces the appended assemblies.R code with the original one.
-    if args.script_dir == None:
+    if not args.script_dir:
         script_dir = os.path.dirname(os.path.realpath(__file__))
         script_dir = script_dir.replace(' ', '\ ')
     else:
@@ -114,7 +114,7 @@ def clean_source_package(args):
 
 
 def run_subprocess(cmd, log_message):
-    """
+    """x
     Run subprocess under standardized settings
     force the cmds to be a string
     """
@@ -140,7 +140,7 @@ def compress_folder(args, cur_time):
     For Galaxy: After finishing the analysis, the folder will be zipped in tar.gz format.
     Replaces the Galaxy .dat file with the compressed analysis folder.
     """
-    if args.script_dir == None:
+    if not args.script_dir:
         script_dir = os.path.dirname(os.path.realpath(__file__))
         script_dir = script_dir.replace(' ', '\ ')
     else:
@@ -163,7 +163,7 @@ def prepare_bed_analysis(args):
     - Making chromosomes file with each valid chromosome.
     - Making the analysis folder.
     """
-    if args.script_dir == None:
+    if not args.script_dir:
         script_dir = os.path.dirname(os.path.realpath(__file__))
         script_dir = script_dir.replace(' ', '\ ')
     else:
@@ -181,8 +181,14 @@ def prepare_bed_analysis(args):
 
     input_file, output_dict, samples = prepare_analysis.ParseFiles(args.bed, output_dir)  # Make all .bed files
     # Fill all .bed files with formatted info.
+
+    if args.chg:
+        type = "CHG"
+    else:
+        type = "CG"
+
     invalid_samples = prepare_analysis.IgvToRnBeads(input_file, output_dict, samples, output_dir, given_samples,
-                                                    args.minimal_reads)
+                                                    args.minimal_reads, type)
 
     # If there are invalid samples (that have less than 5% of the reads of the maximum sample`s reads), Then
     # there will be a new samples file created with these filtered out.
@@ -211,7 +217,7 @@ def run_analysis(args):
     After the analysis, the output folder will be zipped in a given directory.
     """
     cur_time = time.strftime("%d_%m_%Y_%H:%M")
-    if args.script_dir == None:
+    if not args.script_dir:
         script_dir = os.path.dirname(os.path.realpath(__file__))
         script_dir = script_dir.replace(' ', '\ ')
     else:
@@ -268,7 +274,7 @@ def install_assembly(args):
     """
     Install the template assembly package with the given data and DESCRIPTION file.
     """
-    if args.script_dir == None:
+    if not args.script_dir:
         script_dir = os.path.dirname(os.path.realpath(__file__))
         script_dir = script_dir.replace(' ', '\ ')
     else:
@@ -295,7 +301,7 @@ def get_cpg_sites(args, package_name):
     data of the optional annotation data.
     After the installation of the assembly, the files will be deleted.
     """
-    if args.script_dir == None:
+    if not args.script_dir:
         script_dir = os.path.dirname(os.path.realpath(__file__))
         script_dir = script_dir.replace(' ', '\ ')
     else:
@@ -336,7 +342,7 @@ def make_assembly_description(args, package_name):
     Makes the description for the new assembly. The description is already made in a template though
     the assembly and the package name needs to be specified.
     """
-    if args.script_dir == None:
+    if not args.script_dir:
         script_dir = os.path.dirname(os.path.realpath(__file__))
         script_dir = script_dir.replace(' ', '\ ')
     else:
@@ -359,7 +365,7 @@ def install_rnbeads(args):
     """
     Installs the appended RnBeads package to the /home/R folder of the user.
     """
-    if args.script_dir == None:
+    if not args.script_dir:
         script_dir = os.path.dirname(os.path.realpath(__file__))
         script_dir = script_dir.replace(' ','\ ')
     else:
@@ -381,7 +387,7 @@ def append_assembly(args):
     :argument: args, all arguments from argparse.
     Appends the RnBeads package with the assembly annotation and appends the sourcecode to its destination folder.
     """
-    if args.script_dir == None:
+    if not args.script_dir:
         script_dir = os.path.dirname(os.path.realpath(__file__))
         script_dir = script_dir.replace(' ', '\ ')
     else:
@@ -414,7 +420,7 @@ def append_source_code(args, folder_name):
     Appends new genome Rfile to the existing R source code so that Rnbeads can be run on the 'new' assembly.
     """
     chrom_sizes = prepare_analysis.chrom_sizes(args.fasta, args.temp_directory, args.assembly_code)
-    if args.script_dir == None:
+    if not args.script_dir:
         script_dir = os.path.dirname(os.path.realpath(__file__))
         script_dir = script_dir.replace(' ', '\ ')
     else:
@@ -474,7 +480,7 @@ def forge_genome_file(description, args):
     """
     Creates the new package of the given fasta via the BSgenome.forge method in R.
     """
-    if args.script_dir == None:
+    if not args.script_dir:
         script_dir = os.path.dirname(os.path.realpath(__file__))
         script_dir = script_dir.replace(' ', '\ ')
     else:
@@ -502,7 +508,7 @@ def make_rnbeads_description(twobit_file, args):
     """
     Makes the description file for the RnBeads package.
     """
-    if args.script_dir == None:
+    if not args.script_dir:
         script_dir = os.path.dirname(os.path.realpath(__file__))
         script_dir = script_dir.replace(' ', '\ ')
     else:
