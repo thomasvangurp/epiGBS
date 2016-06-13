@@ -573,7 +573,7 @@ def parse_args():
     # If chosen: only the run_analysis function will be executed.
     analysis_only = subparsers.add_parser('analysis_only', help="""If assembly and genome already added:
     analysis only is possible.""")
-    analysis_only.add_argument('-c', '--cores', help='Number of cores you want to use for the analysis', default="2")
+    analysis_only.add_argument('-c', '--cores', help='Number of cores you want to use for the analysis', default="4")
     analysis_only.add_argument('-a', '--annotation', default=None, nargs="*",
                                help="""Annotation file(s) to be added for the annotation (optional).
                                Extra files can be added by separating them with a whitespace.
