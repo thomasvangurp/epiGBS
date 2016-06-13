@@ -9,23 +9,15 @@ Additionally, the correct barcode is appended at the start  to the read.
 """
 
 import Levenshtein
-import re
-import sys
 import os
 import shutil
-import subprocess
-import shutil
 from optparse import OptionParser
-from Bio import SeqIO, Seq, Alphabet, Restriction
+from Bio import Restriction
 from itertools import product
-from Bio.Seq import Seq
 from Bio.Data.IUPACData import *
-from StringIO import StringIO
-from Bio.SeqRecord import SeqRecord
-import operator
 import tempfile
 import gzip, bz2
-import time
+import gc
 
 def parse_options():
     """Parses command line options"""
@@ -43,7 +35,7 @@ def parse_options():
                       default="barcodes.csv", 
                       help = "input tab separated barcode file")
     parser.add_option("--bc-out ",  metavar = "bcout",  action = "store",
-                      type="string",  dest = "bcout",default="stats.csv", 
+                      type="string",  dest = "bcout", default="stats.csv",
                       help = "barcode file out")
     parser.add_option("-o", "--output",  metavar = "output",  action = "store",
                   type="string",  dest = "output", default = "output", 
@@ -124,49 +116,29 @@ def levenshtein(read, bc_set,mismatch, enz_sites):
     is found this is returned and the script automatically quits"""
     sequence = read[1][:-1]
     #Process read 1 barcode
+    min_bc_length = 4
     if '1:N' in read[0]:
         max_total_len = 11
     else:
          #Process read 2 barcode
         max_total_len = 10
     short_sequence = read[1][:max_total_len]
-    bc_1 = re.split(enz_sites[0], short_sequence)[0]
-    bc_2 = re.split(enz_sites[1], short_sequence)[0]
-    bc = min(bc_1, bc_2, key=len)
-    if bc == bc_1:
-        enz_site = enz_sites[0]
-    else:
-        enz_site = enz_sites[1]
-    #Try to find direct match to bc.
-#    for i in range(4, max_bc_length+1):
-#        bc = short_sequence[:i]
-#        if bc in bc_set:
-#            return bc
-    
-    if bc in bc_set:
-        return bc, enz_site
-#check if there is no longer barcode possible
-#                check = 1
-#                for enz_site in enz_sites:
-#                    try:
-#                        if sequence[:max_total_len].index(enz_site) != \
-#                            sequence[:max_total_len].rindex(enz_site):
-#                            check = 0
-#                            break
-#                    except ValueError:
-#                        continue
-#                if check:
-#                    return bc
-#                else:
-#                    #algorithm not suitable,  use the next function
-#                    break
+    if set(short_sequence) == set('N'):
+        return "", 0
+    for enz_site in enz_sites:
+        if enz_site in sequence[:max_total_len]:
+            bc = short_sequence[:short_sequence.rindex(enz_site)]
+            short_sequence = bc + enz_site
+            if bc in bc_set:
+                return bc, enz_site
+            break
     if mismatch == 0:
         return "", 0
     matches = {}
     for barcode in bc_set:
         dist = []
         for enz_site in enz_sites:
-            dist.append(Levenshtein.distance(short_sequence, barcode + enz_site))
+            dist.append(Levenshtein.distance(short_sequence[:len(barcode + enz_site)], barcode + enz_site))
         if min(dist) == dist[0]:
             enz_site = enz_sites[0]
         else:
@@ -277,10 +249,9 @@ def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
         except IOError:
             seq1_handle = gzip.open(opts.reads1+'.gz', "rb")
             seq2_handle = gzip.open(opts.reads2+'.gz', "rb")
-            opts.reads1+='.gz'
+            opts.reads1 += '.gz'
     left_read = [1]
     enz_sites = ['TACAA', 'TGCAG']
-    max_bc_length = 6 #TODO: remove hardcoded ref.
     if not opts.split:
         seq1_name = '%(code)s_%(Flowcell)s_s_%(lane)s_fastq.txt'%\
                 ({'code': 'R1samplecode123','Flowcell':Flowcell, 'lane':Lane})
@@ -289,26 +260,27 @@ def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
         if opts.reads1.endswith('.gz'):
             seq1_name += '.gz'
             seq2_name += '.gz'
-            seq1_out = gzip.open(os.path.join(opts.output, seq1_name), 'a')
-            seq2_out = gzip.open(os.path.join(opts.output, seq2_name), 'a')
+            seq1_out = gzip.open(os.path.join(opts.output, seq1_name), 'w')
+            seq2_out = gzip.open(os.path.join(opts.output, seq2_name), 'w')
         else:
-            seq1_out = open(os.path.join(opts.output, seq1_name), 'a')
-            seq2_out = open(os.path.join(opts.output, seq2_name), 'a')
+            seq1_out = open(os.path.join(opts.output, seq1_name), 'w')
+            seq2_out = open(os.path.join(opts.output, seq2_name), 'w')
     if opts.reads1.endswith('.gz'):
-        nomatch1_out= gzip.open(opts.nomatch1,  "a")
-        nomatch2_out= gzip.open(opts.nomatch2, "a")
+        nomatch1_out= gzip.open(opts.nomatch1,  "w")
+        nomatch2_out= gzip.open(opts.nomatch2, "w")
     else:
-        nomatch1_out= open(opts.nomatch1,  "a")
-        nomatch2_out= open(opts.nomatch2, "a")
+        nomatch1_out= open(opts.nomatch1,  "w")
+        nomatch2_out= open(opts.nomatch2, "w")
     seq = 0
-    lev_time = 0
-    write_time = 0
     bc_set_left = set(k[0] for k in bc_dict.keys())
     bc_set_right = set(k[1] for k in bc_dict.keys())
+    count = 0
     while left_read[0]:
-        seq += 1
-#        if not seq%100:
-#            print lev_time, write_time, seq
+        count += 1
+        if not count%100000:
+            #do manual garbage collection after processing 100000 reads
+            print 'processed %s reads.' % count
+            gc.collect()
         left_read = []
         right_read = []
         for i in range(4):
@@ -316,27 +288,25 @@ def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
                 left_read +=  [seq1_handle.readline()]
                 right_read += [seq2_handle.readline()]
             except StopIteration:
-                brake
+                break
         start_position = 0 #Position to start searching for barcode match.
         left_bc, left_enzsite = levenshtein(left_read, bc_set_left, opts.mismatch, enz_sites)
-        right_bc,  right_enzsite = levenshtein(right_read, bc_set_right, opts.mismatch, enz_sites)
+        if left_bc:
+            right_bc,  right_enzsite = levenshtein(right_read, bc_set_right, opts.mismatch, enz_sites)
         if left_bc and right_bc:
             #Put the correct sequence of the barcode
             try:
                 bc_dict['%s_%s'%(left_bc, right_bc)+'_count'] += 1
             except KeyError:
                  bc_dict['%s_%s'%(left_bc, right_bc)+'_count'] = 1
-            if opts.rename:
-                id = '@' + bc_dict[barcode] +'_%s'% bc_dict[barcode+'_count']
-                left_read[0]= id +'/1\n'
-            elif opts.addRG:
+            if opts.addRG:
                 #determine if read is watson or crick.
                 SM_id = bc_dict[(left_bc, right_bc)]
                 type = read_type(left_read, right_read, left_enzsite, \
                                  right_enzsite, left_bc, right_bc)
                 RG_id = '%s_%s_%s'%(Flowcell,Lane,SM_id)
                 left_read[0] =  left_read[0].split(' ')[0].rstrip('\n')\
-                + ' BC:Z:%s\tBC:Z:%s\tRG:Z:%s\tST:Z:%s\n'%(left_bc, right_bc, RG_id, type)
+                + ' BL:Z:%s\tBR:Z:%s\tRG:Z:%s\tST:Z:%s\n'%(left_bc, right_bc, RG_id, type)
                 right_read[0] = right_read[0].split(' ')[0].rstrip('\n')\
                 + ' BL:Z:%s\tBR:Z:%s\tRG:Z:%s\tST:Z:%s\n'%(left_bc,right_bc, RG_id, type)
             else:
@@ -364,6 +334,8 @@ def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
             #Barcode sequence was not recognized
             nomatch1_out.write(''.join(left_read))
             nomatch2_out.write(''.join(right_read))
+    seq1_out.close()
+    seq2_out.close()
     return bc_dict
 
 def parse_seq(opts, bc_sorted, bc_dict, Flowcell, Lane):
@@ -508,13 +480,14 @@ if __name__ == "__main__":
     else:
         os.mkdir(opts.output)
     if opts.outputdir:
-        try:
-           file_out = open(opts.outputdir, 'w')
-           file_out.write('%s'%opts.output)
-           file_out.close()
-        except OSError:
-            #TODO: determine error type
-            pass
+        pass
+        # try:
+        #    file_out = open(opts.output, 'w')
+        #    file_out.write('%s'%opts.output)
+        #    file_out.close()
+        # except OSError:
+        #     #TODO: determine error type
+        #     pass
     if opts.mode == 'pe':
         write_stats(bc_dict, opts)
         parse_seq_pe(opts, bc_dict, Flowcell, Lane)
