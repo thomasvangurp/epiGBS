@@ -44,7 +44,7 @@ def ParseFiles(input, output):
     return [input_file, output_file_dict, samples]
 
 
-def IgvToRnBeads(input_file, output_dict, samples, output, given_samples=None, min_reads=5):
+def IgvToRnBeads(input_file, output_dict, samples, output, given_samples=None, min_reads=5, type="CG"):
     """
     Fills each sample.bed file with the methylation info that is obtained from the input .bed file.
     """
@@ -54,13 +54,13 @@ def IgvToRnBeads(input_file, output_dict, samples, output, given_samples=None, m
     valid_chromosomes = set()
     for line in input_file:
         chr, pos, context = line.split()[:3]
-        if context == 'CG':
+        if context == type:
             try:
                 # Need info of next line because the context also, needs to be "CG".
                 next_line = input_file.next()
             except StopIteration:
                 pass
-            if next_line.split()[2] != 'CG':  # Needs to be "CG" as well.
+            if next_line.split()[2] != type:  # Needs to be "CG" as well.
                 continue
             else:
                 # None means actually that there is no read data but data with 0 reads

@@ -16,7 +16,7 @@ def main():
         check_sample_file(args.sample)
 
 
-def check_fasta(fasta, valid_nucl="[ATGCN]"):
+def check_fasta(fasta, valid_nucl="[ATGCNatgcn]"):
     """
     Checks the given .fasta file on specific syntax:
     if sequence name is numeric: it has to begin with "chr".
