@@ -5,6 +5,7 @@ import os
 import math
 import gzip
 import tempfile
+from Bio import SeqIO
 
 __author__ = 'thomasvangurp'
 __description__ = "map reads orders of magnitudes faster using STAR"
@@ -14,7 +15,7 @@ def parse_args():
     """Pass command line arguments"""
     parser = argparse.ArgumentParser(description='use STAR for mapping reads')
     #input files
-    parser.add_argument('-s','--sequences',
+    parser.add_argument('-s', '--sequences',
                         help='number of sequences to take for testing')
     parser.add_argument('--tmpdir',
                         help='tmp directory',default="/tmp/")
@@ -57,111 +58,13 @@ def parse_args():
     args.tmpdir = tempfile.mkdtemp(suffix='STAR', prefix='tmp', dir=args.tmpdir)
     return args
 
-def remove_PCR_duplicates(in_files,args):
-    """Remove PCR duplicates and non-paired PE-reads per cluster"""
-    #check if random tag is present in fastq file, otherwise do not perform function
-    # fastq_tags = open(in_files[''])
-    #TODO: implement sample specific PCR duplicate detection
-    for strand,bamfile in in_files['bam_out'].items():
-        clusters = SeqIO.parse(open(args.reference),'fasta')
-        handle = pysam.AlignmentFile(bamfile,'rb')
-        out_bam = tempfile.NamedTemporaryFile(suffix='uniq.bam',dir=args.output_dir,delete=False)
-        out_handle = pysam.AlignmentFile(out_bam.name,'wb', template=handle)
-        read_count = {}
-        for cluster in clusters:
-            enzymes = ["Csp6I","NsiI"]
-            if len(cluster.seq) > 350:
-                #this must be a reference genome / chromosome: look for regions with mapping reads
-                regions = get_regions(cluster,enzymes)
-            else:
-                regions = [None]
-            for region in regions:
-                if region:
-                    reads = handle.fetch(cluster.id,region[0],region[1])
-                else:
-                    reads = handle.fetch(cluster.id)
-                if 'NNNNNNNN' in cluster._seq.upper() and not region:
-                    cluster_is_paired = True
-                elif region:
-                    if region[1] - region[0] > 240:
-                        cluster_is_paired = True
-                    else:
-                        cluster_is_paired = False
-                else:
-                    cluster_is_paired = False
-                read_out = {}
-                for read in reads:
-                    tag_dict = dict(read.tags)
-                    try:
-                        tag = tag_dict['RN']
-                        sample = tag_dict['RG']
-                        AS = tag_dict['AS']
-                    except KeyError:
-                        break
-                    if not read.is_proper_pair and cluster_is_paired:
-                        continue
-                    if sample not in read_out:
-                        read_out[sample] = {}
-                    if tag not in read_out[sample]:
-                        read_out[sample][tag] = {read.qname:AS}
-                    else:
-                        try:
-                            read_out[sample][tag][read.qname]+= AS
-                        except KeyError:
-                            read_out[sample][tag][read.qname] = AS
-                #process read_out
-                if read_out == {} and 'RN' not in tag_dict:
-                    #random tag not yet implemented. return in_files and do not process further
-                    return in_files
-                if region:
-                    reads = handle.fetch(cluster.id, region[0], region[1])
-                else:
-                    reads = handle.fetch(cluster.id)
-                for read in reads:
-                    if not read.is_proper_pair and cluster_is_paired:
-                        continue
-                    # if not read_count%100000:
-                    #     print '%s reads processed for %s strand'%(read_count,strand)
-                    tag_dict = dict(read.tags)
-                    tag = tag_dict['RN']
-                    sample = tag_dict['RG']
-                    try:
-                        read_count[sample]['count'] += 1
-                    except KeyError:
-                        if sample not in read_count:
-                            read_count[sample] = {'count':1}
-                        else:
-                            read_count[sample]['count'] =  1
-                    max_AS = max(read_out[sample][tag].values())
-                    qname = [name for name,AS in read_out[sample][tag].items() if AS == max_AS][0]
-                    if read.qname == qname:
-                        out_handle.write(read)
-                    else:
-                        try:
-                            read_count[sample]['dup_count'] += 1
-                        except KeyError:
-                            read_count[sample]['dup_count'] = 1
-        for key , subdict in sorted(read_count.items()):
-            count = subdict['count']
-            if 'dup_count' in subdict:
-                dup_count = subdict['dup_count']
-                dup_pct = dup_count / float(count)
-                print '%s has %s reads and %s duplicates. Duplicate rate: %.2f%%'%(key,count,dup_count,100*dup_pct)
-            else:
-                print '%s has %s reads and 0 duplicates. Duplicate rate: 0%%' % (key, count)
-        # out_handle.flush()
-        out_handle.close()
-        old_bam = in_files['bam_out'][strand]
-        log = "move old bam file %s to %s"%(old_bam,old_bam.replace('.bam','.old.bam'))
-        cmd = ["mv %s %s"%(old_bam,old_bam.replace('.bam','.old.bam'))]
-        run_subprocess(cmd,args,log)
-        log = "move uniq bam file %s to %s"%(out_bam.name,old_bam)
-        cmd = ["mv %s %s"%(out_bam.name,in_files['bam_out'][strand])]
-        run_subprocess(cmd,args,log)
-        log = "index bam file %s"%(old_bam)
-        cmd = ["samtools index %s"%(in_files['bam_out'][strand])]
-        run_subprocess(cmd,args,log)
-    return in_files
+def remove_PCR_duplicates(args):
+
+    cmd =  "remove_PCR_duplicates.py --input_dir %s" % args.output_dir
+    cmd += " -b %s" % args.barcodes
+    cmd += " -r %s" % args.reference
+    log = "Removal of PCR duplicates"
+    run_subprocess([cmd], args, log)
 
 def run_subprocess(cmd,args,log_message):
     "Run subprocess under standardized settings"
@@ -211,8 +114,8 @@ def process_reads_merged(args):
             except StopIteration:
                 break
         j += 1
-        if not j % 10000:
-            print 'Processed %s reads' % (j)
+        if not j % 1000000:
+            print 'Processed %s reads' % j
         if not read:
             break
         if 'watson' in read[0].lower():
@@ -233,10 +136,6 @@ def process_reads_merged(args):
 
 def process_reads_joined(args):
     """process reads and make them ready for mapping with STAR"""
-
-    # files = {'merged': (args.merged, watson_merged.name, ['C', 'T'], crick_merged.name, ['G', 'A']),
-    #          'reads_forward': (args.reads_R1, watson_r1.name, ['C', 'T'], crick_r1.name, ['G', 'A']),
-    #          'reads_reverse': (args.reads_R2, watson_r2.name, ['G', 'A'], crick_r2.name, ['C', 'T'])}
 
     watson_joined_r1 = tempfile.NamedTemporaryFile(suffix=".fastq", prefix='watson_joined', dir=args.tmpdir,
                                                    delete=False)
@@ -275,7 +174,7 @@ def process_reads_joined(args):
             except StopIteration:
                 break
         j += 1
-        if not j % 10000:
+        if not j % 1000000:
             print 'Processed %s reads' % (j)
         if not read_r1:
             break
@@ -358,7 +257,16 @@ def index_STAR(args):
             header = line
         else:
             seq += line.rstrip('\n')
-    
+    #write final sequence, this is always merged
+    merged_len += len(seq)
+    merged_count += 1
+    ref_merged_watson_handle.write(header + seq.upper().replace('C', 'T') + '\n')
+    ref_merged_crick_handle.write(header + seq.upper().replace('G', 'A') + '\n')
+    #close file handles
+    ref_joined_watson_handle.close()
+    ref_joined_crick_handle.close()
+    ref_merged_watson_handle.close()
+    ref_merged_crick_handle.close()
     #MAKE LIST for indexes to be made 
     index_list = [(joined_len, joined_count, joined_STAR_watson_index, ref_joined_watson),
                   (joined_len, joined_count, joined_STAR_crick_index, ref_joined_crick),
@@ -395,7 +303,7 @@ def map_STAR(args):
                 cmd += " --readFilesIn %s " %   vars(args)['%s_%s_r1' % (strand, type)]
                 cmd += " %s" %                  vars(args)['%s_%s_r2' % (strand, type)]
 
-            cmd += " --outSAMattributes NH HI NM MD AS --outSAMtype SAM"
+            cmd += " --outSAMattributes NM MD AS --outSAMtype SAM"
             cmd += " --outFileNamePrefix %s" % (os.path.join(args.output_dir,'%s_%s'%(type,strand)))
             #outFilterScoreMinOverLread : float: sam as outFilterMatchNmin, but normalized to the read length (sum of mates’ lengths for paired-end reads)
             #outFilterMatchNminOverLread: float: same as outFilterScoreMin, but normalized to read length (sum of mates’ lengths for paired-end reads)
@@ -405,11 +313,13 @@ def map_STAR(args):
             # –outFilterMultimapNmax 1 int: maximum number of loci the read is allowed to map to. Alignments (all of
             # them) will be output only if the read maps to no more loci than this value.
             cmd += " -–outFilterMultimapNmax 1 --outFilterMismatchNoverLmax 0.95"
+            # TODO: implement --alignEndsType endtoend mapping after joined reads are merged
             cmd += "--outFilterMatchNminOverLread 0.9 --scoreGap -4 --seedPerReadNmax 5000" \
                    " --alignEndsType Extend5pOfRead1" \
                    " --alignSoftClipAtReferenceEnds No" \
                    " --outSAMorder PairedKeepInputOrder" \
-                   " --outFilterMultimapNmax 1"
+                   " --outFilterMultimapNmax 1" \
+                   " --scoreInsOpen -1" \
             #make sure we have a bam file sorted by name
             log = "run STAR for % strand on %s reads"%(strand, type)
             run_subprocess([cmd],args, log)
@@ -435,6 +345,7 @@ def parse_sam(in_file, out_file, read_type , strand):
     count = 0
     print 'Warning, only works for forward mapped reads'
     mismatch = 0
+    clip_count_total = 0
     for line in open(in_file, 'r'):
         modulo_line_no = count % 2
         #alternates between 0 and 1
@@ -443,6 +354,19 @@ def parse_sam(in_file, out_file, read_type , strand):
         split_line = line.rstrip('\n').split('\t')
         if split_line[1] not in ['0', '99', '147']:
             mismatch += 1
+            count += 1
+            continue
+        char_count = ''
+        clip_count = 0
+        for char in split_line[5]:
+            if not char.isalpha():
+                char_count += char
+            elif char == 'S':
+                clip_count += int(char_count)
+            else:
+                char_count = ''
+        if clip_count > 6:
+            clip_count_total += 1
             count += 1
             continue
         header = split_line[0].split('|')
@@ -459,10 +383,11 @@ def parse_sam(in_file, out_file, read_type , strand):
             pass
         out_line += [''.join(seq)]
         out_line += split_line[10:]
-        out_line += header[1:5]
+        out_line += header[3:6]
         out_handle.write('\t'.join(out_line) + '\n')
         count += 1
     print '%s mismatches out of %s' % (mismatch, count)
+    print '%s reads out of  %s soft clipped more than 5' % (clip_count_total, count)
 
 def addRG(in_files,args):
     """make header for output bamfile and split in watson and crick"""
@@ -548,6 +473,7 @@ def bam_output(args):
         out_sam = tempfile.NamedTemporaryFile(prefix=strand, suffix='.sam', dir=args.output_dir)
         #rewrite sam file merged and joined for watson and crick
         parse_sam(merged_sam, out_sam.name, 'merged', strand)
+        #TODO: determine why joined reads have more soft-clips or single read matches
         parse_sam(joined_sam, out_sam.name, 'joined', strand)
         #convert to sorted and indexed bam
         cmd = 'cat %s %s |samtools view -@ 4 -Shb |sambamba sort -m 4GB -t %s -o %s  /dev/stdin'%(args.header,
@@ -567,7 +493,7 @@ def clean(args):
         run_subprocess(cmd,args,log)
     log = "remove sam file outputs from output dir"
     cmd = ['rm %s/*Aligned.out.sam' % args.output_dir]
-    run_subprocess(cmd, args, log)
+    # run_subprocess(cmd, args, log)
 
 
 def main():
@@ -576,16 +502,18 @@ def main():
     args = parse_args()
     log = open(args.log,'w')
     log.write("started run\n")
-    # #2 make reference genome fo STAR in appropriate directory
+    #2 make reference genome fo STAR in appropriate directory
     args = index_STAR(args)
-    # #3 rewrite fastq files to contain
+    #3 rewrite fastq files to contain
     args = process_reads_joined(args)
     args = process_reads_merged(args)
-    # #4 map processed reads
+    #4 map processed reads
     args = map_STAR(args)
     args = make_header(args)
     args = bam_output(args)
+    args = remove_PCR_duplicates(args)
     clean(args)
+
 if __name__ == '__main__':
     main()
 
