@@ -87,15 +87,15 @@ def remove_PCR_duplicates(bam_in, bam_out, ref):
                 reads = handle.fetch(cluster.id,region[0],region[1])
             else:
                 reads = handle.fetch(cluster.id)
-            if 'NNNNNNNN' in cluster._seq.upper() and not region:
-                cluster_is_paired = True
-            elif region:
-                if region[1] - region[0] > 240:
-                    cluster_is_paired = True
-                else:
-                    cluster_is_paired = False
-            else:
-                cluster_is_paired = False
+            # if 'NNNNNNNN' in cluster._seq.upper() and not region:
+            #     cluster_is_paired = True
+            # elif region:
+            #     if region[1] - region[0] > 240:
+            #         cluster_is_paired = True
+            #     else:
+            #         cluster_is_paired = False
+            # else:
+            #     cluster_is_paired = False
             read_out = {}
             read = None
             for read in reads:
@@ -106,8 +106,6 @@ def remove_PCR_duplicates(bam_in, bam_out, ref):
                     AS = tag_dict['AS']
                 except KeyError:
                     break
-                if not read.is_proper_pair and cluster_is_paired:
-                    continue
                 if sample not in read_out:
                     read_out[sample] = {}
                 if tag not in read_out[sample]:
@@ -122,20 +120,18 @@ def remove_PCR_duplicates(bam_in, bam_out, ref):
                 continue
             #process read_out
             if read_out == {} and 'RN' not in tag_dict:
-                #random tag not yet implemented. return in_files and do not process further
+                #random tag not implemented for this library. return in_files and do not process further
                 return 0
             if region:
                 reads = handle.fetch(cluster.id, region[0], region[1])
             else:
                 reads = handle.fetch(cluster.id)
             for read in reads:
-                if not read.is_proper_pair and cluster_is_paired:
-                    continue
-                # if not read_count%100000:
-                #     print '%s reads processed for %s strand'%(read_count,strand)
                 tag_dict = dict(read.tags)
                 tag = tag_dict['RN']
                 sample = tag_dict['RG']
+                max_AS = max(read_out[sample][tag].values())
+                qname = [name for name, AS in read_out[sample][tag].items() if AS == max_AS][0]
                 try:
                     read_count[sample]['count'] += 1
                 except KeyError:
@@ -143,15 +139,14 @@ def remove_PCR_duplicates(bam_in, bam_out, ref):
                         read_count[sample] = {'count':1}
                     else:
                         read_count[sample]['count'] =  1
-                max_AS = max(read_out[sample][tag].values())
-                qname = [name for name,AS in read_out[sample][tag].items() if AS == max_AS][0]
-                if read.qname == qname:
-                    out_handle.write(read)
-                else:
+                if read.qname != qname:
+                    #Read with duplicate tag with a lower quality score is marked as a PCR duplicate.
+                    read.is_duplicate = True
                     try:
                         read_count[sample]['dup_count'] += 1
                     except KeyError:
                         read_count[sample]['dup_count'] = 1
+                out_handle.write(read)
     print 'Sample:\tReads:\tDuplicates:\tDuplicate rate:'
     for key , subdict in sorted(read_count.items()):
         count = subdict['count']
