@@ -17,7 +17,7 @@ def parse_args():
 
 def merge_line(watson_line,crick_line):
     """merge watson and crick output"""
-    out_line = watson_line[:2] + [watson_line[3]] + ['']*len(watson_line[9:])
+    out_line = watson_line[:2] + [watson_line[3]] + [watson_line[4][:-3]] + [crick_line[4][:-3]] + ['']*len(watson_line[9:])
     AD_index = watson_line[8].split(':').index('AD')
     watson_nt_index = watson_line[4][:-4].split(',')
     crick_nt_index = crick_line[4][:-4].split(',')
@@ -40,7 +40,7 @@ def merge_line(watson_line,crick_line):
                 crick_obs = c_value.split(':')[AD_index].split(',')[nt_pos_crick]
             except TypeError:
                 crick_obs = 0
-            out_line[index+3] += '%s,%s:' % (watson_obs, crick_obs)
+            out_line[index+5] += '%s,%s:' % (watson_obs, crick_obs)
     return '\t'.join([e.rstrip(':') for e in out_line]) + '\n'
 
 def merge(args):
