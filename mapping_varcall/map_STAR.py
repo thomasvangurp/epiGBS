@@ -59,8 +59,8 @@ def parse_args():
     return args
 
 def remove_PCR_duplicates(args):
-
-    cmd =  "remove_PCR_duplicates.py --input_dir %s" % args.output_dir
+    """us subprocess to run external remove_PCR_duplicates routine"""
+    cmd =  "mark_PCR_duplicates.py --input_dir %s" % args.output_dir
     cmd += " -b %s" % args.barcodes
     cmd += " -r %s" % args.reference
     log = "Removal of PCR duplicates"
@@ -352,6 +352,8 @@ def parse_sam(in_file, out_file, read_type , strand):
         if line.startswith('@'):
             continue
         split_line = line.rstrip('\n').split('\t')
+        #skip read pairs with improper flags.
+        #TODO: do this filtering in mark_PCR_duplicates or elsewhere with access to pysam.
         if split_line[1] not in ['0', '99', '147']:
             mismatch += 1
             count += 1

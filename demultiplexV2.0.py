@@ -77,6 +77,9 @@ def parse_options():
     parser.add_option("-d",  "--delete",  action = "store_true", 
                       default = 1 ,  dest = "delete",
                       help = "Remove the barcode from the sequence, default is TRUE")
+    parser.add_option("--control-nt", action="store_true",
+                      default=0, dest="control_nucleotide",
+                      help="implement barcode design with control nucleotide")
     return parser
     
 
@@ -230,8 +233,14 @@ def parse_bc(barcodes, fc, ln):
             for n,item in enumerate(line.rstrip('\n').split('\t')):
                 if header_index[n] in bc_instance.__dict__:
                     bc_instance.__setattr__(header_index[n],item)
-            bc_instance.ENZ_R1 = get_enz(bc_instance.ENZ_R1)
-            bc_instance.ENZ_R2 = get_enz(bc_instance.ENZ_R2)
+            if bc_instance.ENZ_R1 != None:
+                bc_instance.ENZ_R1 = get_enz(bc_instance.ENZ_R1)
+            else:
+                bc_instance.ENZ_R1 = get_enz('PstI')
+            if bc_instance.ENZ_R2 != None:
+                bc_instance.ENZ_R2 = get_enz(bc_instance.ENZ_R2)
+            else:
+                bc_instance.ENZ_R2 = get_enz('PstI')
             bc_instance.enz_remnant_R1 = get_enz_remnant(bc_instance.ENZ_R1)
             bc_instance.enz_remnant_R2 = get_enz_remnant(bc_instance.ENZ_R2)
             bc_instance.Wobble_R1 = int(bc_instance.Wobble_R1)
@@ -312,14 +321,23 @@ def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
     elements_2 = [entry.enz_remnant_R2 for entry in bc_dict.values()]
     enz_sites_left = []
     enz_sites_right = []
-    for nt in ['C','T']:
+    if opts.control_nucleotide:
+        for nt in ['C','T']:
+            for element in elements_1[0]:
+                if nt+element[0] not in enz_sites_left:
+                    #implement search which includes control nucleotide
+                    enz_sites_left += [nt + element]
+            for element in elements_2[0]:
+                if nt+element[0] not in enz_sites_right:
+                    enz_sites_right += [nt + element]
+    else:
         for element in elements_1[0]:
-            if nt+element[0] not in enz_sites_left:
-                #implement search which includes control nucleotide
-                enz_sites_left += [nt + element]
+            if element[0] not in enz_sites_left:
+                # implement search which includes control nucleotide
+                enz_sites_left += [element]
         for element in elements_2[0]:
-            if nt+element[0] not in enz_sites_right:
-                enz_sites_right += [nt + element]
+            if element[0] not in enz_sites_right:
+                enz_sites_right += [element]
     max_bc_len_left  =  max(k[0][0] + len(k[0][1]) for k in bc_dict.keys()) + max(len(k) for k in enz_sites_left)
     max_bc_len_right =  max(k[1][0] + len(k[1][1]) for k in bc_dict.keys()) + max(len(k) for k in enz_sites_right)
     left_read = [True]
@@ -344,17 +362,19 @@ def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
             if opts.addRG:
                 #determine if read is watson or crick.
                 try:
-                    #TODO: fix hard-coded start of barcode
                     SM_id = bc_dict[((3,left_bc),(3,right_bc))].Sample
                 except KeyError:
                     #This can only happen if the barcode is incorrectly read
-                    continue
+                    try:
+                        SM_id = bc_dict[((0, left_bc), (0, right_bc))].Sample
+                    except KeyError:
+                        continue
                 #one control nucleotide should be converted the other not. If this succeeds than call read type (watson,crick)
                 #based on left nucleotide. if this is
                 if control_left != control_right:
                     strand = control_left
                 else:
-                    strand = 'NA'
+                    strand = control_left
                 RG_id = '%s_%s_%s'%(Flowcell,Lane,SM_id)
                 if wobble_left == '':
                     wobble_left = 'NNN'
@@ -362,14 +382,21 @@ def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
                     wobble_right = 'NNN'
                 wobble = wobble_left + "_" + wobble_right
                 left_read[0] =  left_read[0].split(' ')[0].rstrip('\n') \
-                                + '\tBC:Z:%s\tBC:Z:%s\tRG:Z:%s\tST:Z:%s\tRN:Z:%s\n'%(left_bc, right_bc, RG_id, strand, wobble)
+                                + '\tBC:Z:%s\tBC:Z:%s\tRG:Z:%s\tST:Z:%s\n'%(left_bc, right_bc, RG_id, strand)
+
                 right_read[0] = right_read[0].split(' ')[0].rstrip('\n') \
-                                + '\tBL:Z:%s\tBR:Z:%s\tRG:Z:%s\tST:Z:%s\tRN:Z:%s\n'%(left_bc,right_bc, RG_id, strand, wobble)
+                                + '\tBL:Z:%s\tBR:Z:%s\tRG:Z:%s\tST:Z:%s\n'%(left_bc,right_bc, RG_id, strand)
+                if opts.control_nucleotide:
+                    left_read[0] = left_read[0][:-1] + '\tRN:Z:%s\n' % wobble
+                    right_read[0] = right_read[0][:-1] + '\tRN:Z:%s\n' % wobble
             else:
                 id = left_read[0][:-1]
             if opts.delete:
                 #+1 because of control nucleotide after barcode
-                control_NT = 'C'
+                if opts.control_nucleotide:
+                    control_NT = 'C'
+                else:
+                    control_NT = ''
                 left_read[1] = left_read[1][left_start + len(left_bc + control_NT):]
                 left_read[3] = left_read[3][left_start + len(left_bc + control_NT):]
                 right_read[1] = right_read[1][right_start + len(right_bc + control_NT):]

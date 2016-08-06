@@ -17,7 +17,11 @@ def parse_args():
 
 def merge_line(watson_line,crick_line):
     """merge watson and crick output"""
-    out_line = watson_line[:2] + [watson_line[3]] + [watson_line[4][:-3]] + [crick_line[4][:-3]] + ['']*len(watson_line[9:])
+    out_line = watson_line[:2]
+    out_line += [watson_line[3]]
+    out_line += [watson_line[4][:-4]]
+    out_line += [crick_line[4][:-4]]
+    out_line += ['']*len(watson_line[9:])
     AD_index = watson_line[8].split(':').index('AD')
     watson_nt_index = watson_line[4][:-4].split(',')
     crick_nt_index = crick_line[4][:-4].split(',')

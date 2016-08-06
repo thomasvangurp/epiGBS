@@ -45,6 +45,9 @@ def filter_bed(args):
                     called += 1
             except ValueError:
                 pass
+            except IndexError:
+                called = 0
+                break
         if called >= min_call:
             chrom_out.update(['chr%s'%split_line[0]])
             if not line.startswith('chr'):

@@ -169,6 +169,7 @@ def run_bwameth(in_files,args):
            os.path.join(args.output_dir, 'pe.bam'), in_files['header'],os.path.join(args.output_dir, 'merged.bam'))]
 
     run_subprocess(cmd,args,log)
+    
     log = "index combined bam file"
     cmd = ["samtools index %s"%(os.path.join(args.output_dir,'combined.bam'))]
     run_subprocess(cmd, args, log)
@@ -181,6 +182,9 @@ def run_bwameth(in_files,args):
     crick_output = pysam.AlignmentFile(os.path.join(args.output_dir,'crick.bam'),'wb', template=bam_input)
     for record in bam_input:
         tag_dict = dict(record.tags)
+        #remove reads with alternate mapping positions
+        # if 'XA' in tag_dict:
+        #     continue
         try:
             if (record.is_reverse and record.is_paired == False) or \
                 (record.is_paired and record.is_read1 and record.is_reverse == True) or \
@@ -501,17 +505,26 @@ def variant_calling_samtools(in_files,args):
     in_files['vcf_out']['watson'] = os.path.join(args.output_dir,'watson.vcf.gz')
     in_files['vcf_out']['crick'] = os.path.join(args.output_dir,'crick.vcf.gz')
 
-    cmd = ["samtools mpileup --reference %s -gt DP,AD,INFO/AD"%(args.reference)+
-           " -d 10000000 -q 0 -Q 0 -vu %s"%(in_files['bam_out']['watson']) +
-           "|grep -v '^##contig='|pigz -c > %s"%(in_files['vcf_out']['watson'])]
+    cmd = ["samtools mpileup --reference %s -gt DP,AD,INFO/AD" % (args.reference) +
+           " --max-depth  10000000 " +  # call at max-depth of 10.000.000
+           "-q 0 " +  # Do not skip alignments with low mapQ #TODO: investigate option
+           "-Q 15 " +  # Skip bases with baseQ/BAQ smaller than 15
+           "--skip-indels " +  # skip indels
+           "-vu %s" % (
+           in_files['bam_out']['watson']) +  # v = generate genotype likelihoods in VCF format u = uncompressed
+           "|grep -v '^##contig='|bgzip -c > %s" % (in_files['vcf_out']['watson'])]
 
     log = "use samtools mpileup to get variant observation counts for watson"
     run_subprocess(cmd, args, log)
 
 
     cmd = ["samtools mpileup --reference %s -gt DP,AD,INFO/AD" % (args.reference) +
-           " -d 10000000 -q 0 -Q 0 -vu %s" % (in_files['bam_out']['crick']) +
-           "|grep -v '^##contig='|pigz -c > %s" % (in_files['vcf_out']['crick'])]
+           " --max-depth  10000000 " + #call at max-depth of 10.000.000
+           "-q 0 " + #Do not skip alignments with low mapQ #TODO: investigate option
+           "-Q 15 " + #Skip bases with baseQ/BAQ smaller than 15
+           "--skip-indels " + #skip indels
+           "-vu %s" % (in_files['bam_out']['crick']) + #v = generate genotype likelihoods in VCF format u = uncompressed
+           "|grep -v '^##contig='|bgzip -c > %s" % (in_files['vcf_out']['crick'])]
 
     log = "use samtools mpileup to get variant observation counts for crick"
     run_subprocess(cmd, args, log)
@@ -526,8 +539,8 @@ def methylation_calling(in_files,args):
            " -r %s"%(args.reference) +
            " -w %s"%(in_files['vcf_out']['watson']) +
            " -c %s"%(in_files['vcf_out']['crick']) +
-           " -m %s"%(os.path.join(args.output_dir,'methylation.vcf.gz')) +
-           " -s %s"%(os.path.join(args.output_dir,'snp.vcf.gz')) +
+           " -m %s"%(os.path.join(args.output_dir,'methylation.vcf')) +
+           " -s %s"%(os.path.join(args.output_dir,'snp.vcf')) +
            " -heat %s"%(os.path.join(args.output_dir,'heatmap.igv')) +
            " -methylation_called %s"%(os.path.join(args.output_dir,'methylation.bed')) +
            " -snp_called %s"%(os.path.join(args.output_dir,"snp.bed")) ]
@@ -543,15 +556,16 @@ def main():
     #Step 1: discover files in input #todo
     files = {}
     #Step 2: map reads using bwameth
+    #TODO: replace for running map_STAR
     files = run_bwameth(files,args)
     #Step 3: join the non overlapping PE reads from watson and crick using usearch
     #TODO: PCR duplicate removal should work for reference genomes as well!
-    files = remove_PCR_duplicates(files,args)
+    # files = remove_PCR_duplicates(files,args)
     #Step 3a use seqtk to trim merged and joined reads from enzyme recognition site
     files = variant_calling_samtools(files, args)
     # files = run_Freebayes(files,args)
     #Step 4: Dereplicate all watson and crick reads
-    # files = methylation_calling(files,args)
+    files = methylation_calling(files,args)
     print 'done'
 if __name__ == '__main__':
     main()

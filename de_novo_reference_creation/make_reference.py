@@ -29,7 +29,6 @@ usearch = "usearch"#_8.0.1409_i86osx32"
 vsearch = "vsearch"
 seqtk = "seqtk"
 pear = "pear"
-mergeBSv3 = "mergeBSv3.py"
 create_consensus = "create_consensus.py"
 vcfutils = "vcfutils.pl"
 
@@ -43,6 +42,10 @@ def parse_args():
                         help='forward reads fastq')
     parser.add_argument('--reverse',
                     help='reverse reads fastq')
+    parser.add_argument('--barcodes',
+                        help='max barcode length used to trim joined reads')
+    parser.add_argument('--cycles',default='126',
+                        help='Number of sequencing cycles / read length')
     parser.add_argument('--min_unique_size',default="2",
                     help='Minimum unique cluster size')
     parser.add_argument('--clustering_treshold',default="0.95",
@@ -87,14 +90,10 @@ def run_subprocess(cmd,args,log_message):
         stdout, stderr = p.communicate()
         stdout = stdout.replace('\r','\n')
         stderr = stderr.replace('\r','\n')
-        # stderr = None
         if stdout:
             log.write('stdout:\n%s\n'%stdout)
         if stderr:
             log.write('stderr:\n%s\n'%stderr)
-        # return_code = p.poll()
-        # if return_code:
-        #     raise RuntimeError(stderr)
         log.write('finished:\t%s\n\n'%log_message)
     return 0
 
@@ -177,38 +176,45 @@ def reverse_complement(read):
 
 def join_fastq(r1,r2,outfile,args):
     """join fastq files with 'NNNN' between forward and reverse complemented reverse read"""
-    cmd = ["paste <(pigz -cd %s |seqtk seq -A -) "%(r1) +
-           "<(pigz -cd %s |seqtk seq -A -)|cut -f1-5|sed '/^>/!s/\t/NNNNNNNN/g' |pigz -c > %s"%(r2,outfile)]
+    #get max length of forward and reverse barcodes
+    if args.barcodes:
+        with open(args.barcodes) as bc_handle:
+            header = bc_handle.readline()[:-1].split('\t')
+            barcode_1_index = header.index('Barcode_R1')
+            barcode_2_index = header.index('Barcode_R2')
+            try:
+                wobble_R1_index = header.index('Wobble_R1')
+                wobble_R2_index = header.index('Wobble_R2')
+            except ValueError:
+                wobble_R1_index = None
+                wobble_R2_index = None
+            barcode_1_max_len = 0
+            barcode_2_max_len = 0
+            for line in bc_handle:
+                split_line = line.rstrip('\n').split('\t')
+                try:
+                    #TODO: make control nucleotide explicit option in barcode file, now harccoded!
+                    wobble_R1_len = int(split_line[wobble_R1_index]) + 1
+                    wobble_R2_len = int(split_line[wobble_R2_index]) + 1
+                except TypeError:
+                    wobble_R1_len = 0
+                    wobble_R2_len = 0
+                if len(split_line[barcode_1_index]) > barcode_1_max_len:
+                    barcode_1_max_len = len(split_line[barcode_1_index])
+                if len(split_line[barcode_2_index]) > barcode_2_max_len:
+                    barcode_2_max_len = len(split_line[barcode_2_index])
+        max_len_R1 = int(args.cycles) - barcode_1_max_len - wobble_R1_len
+        max_len_R2 = int(args.cycles) - barcode_2_max_len - wobble_R2_len
+    else:
+        #no trimming required
+        max_len_R1 = 200
+        max_len_R2 = 200
+    #Trim the reads up to the min expected length to improve de novo reference creation for joined reads
+    cmd = ["paste <(pigz -cd %s |seqtk seq -A - | cut -c1-%s) " % (r1, max_len_R1) +
+           "<(pigz -cd %s |seqtk seq -A -|cut -c1-%s)|cut -f1-5" % (r2, max_len_R2)+
+           "|sed '/^>/!s/\t/NNNNNNNN/g' |pigz -c > %s" % outfile]
     log = "Combine joined fastq file"
     run_subprocess(cmd,args,log)
-    # if r1.endswith('gz'):
-    #     f1_handle = gzip.open(r1)
-    #     f2_handle = gzip.open(r2)
-    # else:
-    #     f1_handle = open(r1)
-    #     f2_handle = open(r2)
-    # if outfile.endswith('gz'):
-    #     out_handle = gzip.open(outfile,'w')
-    # else:
-    #     out_handle = open(outfile,'w')
-    # while True:
-    #     read1 = []
-    #     read2 = []
-    #     try:
-    #         for i in range(4):
-    #             read1.append(f1_handle.next())
-    #             read2.append(f2_handle.next())
-    #     except StopIteration:
-    #         break
-    #     out = '>%s\n%s'%(read1[0][1:-1],read1[1][:-1])
-    #     #add N nucleotides to read s1
-    #     out += 'N'*8
-    #     #add reverse complement of read 2 to read 1
-    #     #TODO: check if output file is correct in terms of strandedness
-    #     out += read2[1][:-1]
-    #     out += '\n'
-    #     out_handle.write(out)
-    # out_handle.close()
     return True
 
 def join_non_overlapping(in_files,args):
@@ -303,7 +309,7 @@ def dereplicate_reads(in_files,args):
             file_in = in_files[strand][name]
             file_out = '.'.join(file_in.split('.')[:-2]) + '.derep.' + file_in.split('.')[-2]
             in_files[strand][name] = [file_in]
-            cmd = [vsearch +' -derep_fulllength %s -sizeout -minuniquesize 2 -output %s'%(file_in,file_out)]
+            cmd = [vsearch +' -derep_fulllength %s -sizeout -minuniquesize 1 -output %s'%(file_in,file_out)]
             log = "Dereplicate full_length of %s using vsearch"%(strand)
             run_subprocess(cmd,args,log)
             name_out = name + "_derep"
@@ -434,6 +440,7 @@ def get_ref(clusters):
             output_fasta += 'N'
     output_fasta += '\n'
     return output_fasta
+    return output_fasta
 
 
 
@@ -520,5 +527,7 @@ def main():
     files = make_ref_from_uc(files,args)
     #step 8: Cluster consensus
     files = cluster_consensus(files,args)
+
+
 if __name__ == '__main__':
     main()

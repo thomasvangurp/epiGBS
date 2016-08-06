@@ -17,7 +17,6 @@ from itertools import product
 from Bio.Data.IUPACData import *
 import tempfile
 import gzip, bz2
-import gc
 
 def parse_options():
     """Parses command line options"""
@@ -278,15 +277,13 @@ def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
     while left_read[0]:
         count += 1
         if not count%100000:
-            #do manual garbage collection after processing 100000 reads
             print 'processed %s reads.' % count
-            gc.collect()
         left_read = []
         right_read = []
         for i in range(4):
             try:
-                left_read +=  [seq1_handle.readline()]
-                right_read += [seq2_handle.readline()]
+                left_read.append(seq1_handle.readline())
+                right_read.append(seq2_handle.readline())
             except StopIteration:
                 break
         start_position = 0 #Position to start searching for barcode match.
@@ -299,37 +296,37 @@ def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
                 bc_dict['%s_%s'%(left_bc, right_bc)+'_count'] += 1
             except KeyError:
                  bc_dict['%s_%s'%(left_bc, right_bc)+'_count'] = 1
-            if opts.addRG:
+            # if opts.addRG:
                 #determine if read is watson or crick.
-                SM_id = bc_dict[(left_bc, right_bc)]
-                type = read_type(left_read, right_read, left_enzsite, \
-                                 right_enzsite, left_bc, right_bc)
-                RG_id = '%s_%s_%s'%(Flowcell,Lane,SM_id)
-                left_read[0] =  left_read[0].split(' ')[0].rstrip('\n')\
-                + ' BL:Z:%s\tBR:Z:%s\tRG:Z:%s\tST:Z:%s\n'%(left_bc, right_bc, RG_id, type)
-                right_read[0] = right_read[0].split(' ')[0].rstrip('\n')\
-                + ' BL:Z:%s\tBR:Z:%s\tRG:Z:%s\tST:Z:%s\n'%(left_bc,right_bc, RG_id, type)
-            else:
-                id = left_read[0][:-1]
-            if opts.delete:
-                left_read[1] = left_read[1][len(left_bc):]
-                left_read[3] = left_read[3][len(left_bc):]
-                right_read[1] = right_read[1][len(right_bc):]
-                right_read[3] = right_read[3][len(right_bc):]
-            else:
-                #implement barcode in right hand read for tassel pipeline.
-                right_read = make_bc_record(right_read, barcode, id)
-            if not opts.split:
-                seq1_out.write(''.join(left_read))
-                seq2_out.write(''.join(right_read))
-            else:
-                #If splitting is activated, compression takes too long, disable!
-                output_location_1 = os.path.join(opts.output, "%s_%s_1.fastq"%(bc_dict[barcode], barcode))
-                output_location_2 = os.path.join(opts.output, "%s_%s_2.fastq"%(bc_dict[barcode], barcode))
-                output_handle_1 = open(output_location_1, 'a')
-                output_handle_2 = open(output_location_2, 'a')
-                output_handle_1.write(''.join(left_read))
-                output_handle_2.write(''.join(right_read))
+            SM_id = bc_dict[(left_bc, right_bc)]
+            type = read_type(left_read, right_read, left_enzsite, \
+                             right_enzsite, left_bc, right_bc)
+            RG_id = '%s_%s_%s'%(Flowcell,Lane,SM_id)
+            left_read[0] =  left_read[0].split(' ')[0].rstrip('\n')\
+            + ' BL:Z:%s\tBR:Z:%s\tRG:Z:%s\tST:Z:%s\n'%(left_bc, right_bc, RG_id, type)
+            right_read[0] = right_read[0].split(' ')[0].rstrip('\n')\
+            + ' BL:Z:%s\tBR:Z:%s\tRG:Z:%s\tST:Z:%s\n'%(left_bc,right_bc, RG_id, type)
+            # else:
+            #     id = left_read[0][:-1]
+            # if opts.delete:
+            left_read[1] = left_read[1][len(left_bc):]
+            left_read[3] = left_read[3][len(left_bc):]
+            right_read[1] = right_read[1][len(right_bc):]
+            right_read[3] = right_read[3][len(right_bc):]
+            # else:
+            #     #implement barcode in right hand read for tassel pipeline.
+            #     right_read = make_bc_record(right_read, barcode, id)
+            # if not opts.split:
+            seq1_out.write(''.join(left_read))
+            seq2_out.write(''.join(right_read))
+            # else:
+            #     #If splitting is activated, compression takes too long, disable!
+            #     output_location_1 = os.path.join(opts.output, "%s_%s_1.fastq"%(bc_dict[barcode], barcode))
+            #     output_location_2 = os.path.join(opts.output, "%s_%s_2.fastq"%(bc_dict[barcode], barcode))
+            #     output_handle_1 = open(output_location_1, 'a')
+            #     output_handle_2 = open(output_location_2, 'a')
+            #     output_handle_1.write(''.join(left_read))
+            #     output_handle_2.write(''.join(right_read))
         else:
             #Barcode sequence was not recognized
             nomatch1_out.write(''.join(left_read))

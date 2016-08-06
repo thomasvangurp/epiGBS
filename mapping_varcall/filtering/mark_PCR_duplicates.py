@@ -34,7 +34,6 @@ def parse_args():
             raise OSError("%s does not exist" % args.crick)
     return args
 
-#TODO: make statistics output per individual.
 #TODO: make statistics output per contig. (Do lowly covered contigs get less PCR duplicate rates?
 
 def get_enz(enz):

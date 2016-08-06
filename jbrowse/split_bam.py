@@ -39,29 +39,36 @@ def split_bam(args):
         i += 1
         if not i % 100000:
             print 'processed %s reads' % i
-        sample = dict(read.tags)['RG'].split('_')[-1]
+        sample = '_'.join(dict(read.tags)['RG'].split('_')[2:])
         handle = out_handles[sample]['watson']
         handle.write(read)
+    for subdict in out_handles.values():
+        subdict['watson'].close()
     i = 0
     for read in bam_crick_handle:
         i += 1
         if not i % 100000:
             print 'processed %s reads' % i
-        sample = dict(read.tags)['RG'].split('_')[-1]
+        sample = '_'.join(dict(read.tags)['RG'].split('_')[2:])
         handle = out_handles[sample]['crick']
         handle.write(read)
     for subdict in out_handles.values():
-        subdict['watson'].close()
-        pysam.index(subdict['watson'], "%s.bai" % subdict['watson'])
         subdict['crick'].close()
-        pysam.index(subdict['crick'], "%s.bai" % subdict['crick'])
+    for item in bam_watson_handle.header['RG']:
+        watson_path = os.path.join(args.output_dir, '%s.watson.bam' % item['SM'])
+        crick_path = os.path.join(args.output_dir, '%s.crick.bam' % item['SM'])
+        pysam.index(watson_path)
+        pysam.index(crick_path)
+
 
 def main():
-    """main function"""
+    """main function
+    :rtype: int
+    """
     args = parse_args()
     split_bam(args)
     return 0
 
 
 if __name__ == '__main__':
-    main()        
+    return_code = main()
