@@ -2,6 +2,7 @@
 """pypy only merge watson and crick calls to custom format"""
 import argparse
 import gzip
+import os
 
 def parse_args():
     """Parse command line arguments"""
@@ -21,6 +22,8 @@ def merge_line(watson_line,crick_line):
     out_line += [watson_line[3]]
     out_line += [watson_line[4][:-4]]
     out_line += [crick_line[4][:-4]]
+    if out_line[-2:] == ['','']:
+        return None
     out_line += ['']*len(watson_line[9:])
     AD_index = watson_line[8].split(':').index('AD')
     watson_nt_index = watson_line[4][:-4].split(',')
@@ -44,17 +47,20 @@ def merge_line(watson_line,crick_line):
                 crick_obs = c_value.split(':')[AD_index].split(',')[nt_pos_crick]
             except TypeError:
                 crick_obs = 0
-            out_line[index+5] += '%s,%s:' % (watson_obs, crick_obs)
-    return '\t'.join([e.rstrip(':') for e in out_line]) + '\n'
+            if nt == 'T':
+                out_line[index+5] += '%s,%s' % (watson_obs, crick_obs)
+            else:
+                out_line[index + 5] += '%s,%s:' % (watson_obs, crick_obs)
+    return '\t'.join(out_line) + '\n'
 
 def merge(args):
     """"merge watson and crick calls"""
-    watson_handle = gzip.open(args.watson)
-    crick_handle = gzip.open(args.crick)
+    watson_handle = os.popen("pigz -cd %s" % args.watson)
+    crick_handle = os.popen("pigz -cd %s" % args.crick)
     read_watson = True
     read_crick = True
     #TODO: define output header
-    output = gzip.open(args.output, 'w')
+    output = open(args.output, 'w')
     count = 0
     while True:
         if read_watson:
@@ -74,17 +80,15 @@ def merge(args):
     while True:
         if read_watson:
             while True:
-                try:
-                    watson_line = watson_handle.next()[:-1].split('\t')
-                except StopIteration:
+                watson_line = watson_handle.next()[:-1].split('\t')
+                if watson_line == ['']:
                     break
                 if 'INDEL' not in watson_line:
                     break
         if read_crick:
             while True:
-                try:
-                    crick_line = crick_handle.readline()[:-1].split('\t')
-                except StopIteration:
+                crick_line = crick_handle.next()[:-1].split('\t')
+                if crick_line == ['']:
                     break
                 if 'INDEL' not in crick_line:
                     break
@@ -94,10 +98,12 @@ def merge(args):
                 if not count % 1000000:
                     print 'processed %s lines' % count
                 output_line = merge_line(watson_line, crick_line)
-                output.write(output_line)
+                if output_line:
+                    output.write(output_line)
                 #start reading both lines again.
                 read_watson = True
                 read_crick = True
+                continue
             elif int(watson_line[1]) > int(crick_line[1]):
                 read_watson = False
                 read_crick = True
@@ -113,6 +119,7 @@ def merge(args):
             read_crick = False
             read_watson = True
     output.close()
+    os.popen('pigz %s' % args.output)
 def main():
     """Main function loop"""
     args = parse_args()
