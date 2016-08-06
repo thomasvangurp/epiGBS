@@ -1,6 +1,6 @@
 #!/usr/bin/env pypy
 import argparse
-import gzip
+import os
 
 def parse_args():
     """Parse command line arguments"""
@@ -16,7 +16,8 @@ def parse_args():
 def make_header(args):
     """make vcf header for SNP output"""
     header = '\n'
-    with gzip.open(args.SNP_output,'w') as handle:
+    #TODO: define header properties
+    with open(args.SNP_output,'w') as handle:
         handle.write(header)
     return 0
 
@@ -43,10 +44,11 @@ def combine_counts(observations, watson_ALT, crick_ALT, convert_dict, ref_base):
             nt_counts['C'] = crick_count['C'] + sum(watson_count.values())
             return nt_counts
         # We can only add all C and T watson observations if there is no evidence of a C/T SNP in Crick
-        if crick_count['T'] / float(sum(crick_count.values())) < 0.05:
-            # all T and C counts for the watson allele are stored as
-            # C observations as no evidence of a T alt allele is present on Crick
-            nt_counts['C'] += watson_count['T']
+        if crick_count['T'] > 0:
+            if crick_count['T'] / float(sum(crick_count.values())) < 0.05:
+                # all T and C counts for the watson allele are stored as
+                # C observations as no evidence of a T alt allele is present on Crick
+                nt_counts['C'] += watson_count['T']
         # exclude situation in which reference observations are made in one but not the other strand
         if crick_count['C'] > 0 and watson_count['C'] == 0 and watson_count['T'] == 0:
             return {}
@@ -59,9 +61,10 @@ def combine_counts(observations, watson_ALT, crick_ALT, convert_dict, ref_base):
             return nt_counts
         # TODO 1/2: check if we should use implied evidence for absence of SNP to proceed with calling
         # TODO 2/2: converted reference allele. for now, leave intact. Evaluate!
-        if watson_count['A']  / float(sum(watson_count.values())) < 0.05:
-            # all A counts for the watson allele are stored as G observations
-            nt_counts['G'] += crick_count['A']
+        if watson_count['A'] > 0:
+            if watson_count['A']  / float(sum(watson_count.values())) < 0.05:
+                # all A counts for the watson allele are stored as G observations
+                nt_counts['G'] += crick_count['A']
         # exclude situation in which reference observations are made in one but not the other strand
         if watson_count['G'] > 0 and crick_count['G'] == 0 and crick_count['A'] == 0:
             return {}
@@ -208,22 +211,26 @@ def call_SNP(line):
     """main SNP calling algorithm"""
     split_line = line.rstrip('\n').split('\t')
     chrom, pos, ref_base, watson_ALT, crick_ALT = split_line[:5]
-    if ref_base == "C":
+    if len(ref_base) > 1:
+        return None
+    if ref_base.upper() == 'N':
+        return None
+    if ref_base.upper() == "C":
         if crick_ALT == '' and watson_ALT == 'T':
             # Only a methylation polymorphism
             return None
         convert_dict = {'watson': {'A': 'NU', 'T': 'NA', 'G': 'NU'},
                         'crick': {'A': 'NO_G_watson', 'T': 'NU', 'G': 'ADD_A_NO_A_watson'}}
-    elif ref_base == "T":
+    elif ref_base.upper() == "T":
         convert_dict = {'watson': {'A': 'NU', 'C': 'NA', 'G': 'NU'},
                         'crick': {'A': 'NO_G_watson', 'C': 'NU', 'G': 'ADD_A_NO_A_watson'}}
-    elif ref_base == "G":
+    elif ref_base.upper() == "G":
         if crick_ALT == 'A' and watson_ALT == '':
             #Only a methylation polymorphism
             return None
         convert_dict = {'watson': {'A': 'NU', 'C': 'ADD_T_NO_T_crick', 'T': 'NO_C_crick'},
                         'crick': {'A': 'NA', 'C': 'NU', 'T': 'NU'}}
-    elif ref_base == "A":
+    elif ref_base.upper() == "A":
         convert_dict = {'watson': {'C': 'ADD_T_NO_T_crick', 'T': 'NO_C_crick', 'G': 'NU'},
                         'crick': {'C': 'NU', 'T': 'NU', 'G': 'NA'}}
     if watson_ALT == '' and crick_ALT == '':
@@ -244,129 +251,81 @@ def call_SNP(line):
                     ALT[nt] = value
             DP += sum(count.values())
             counts.append(count)
-        ALT = sorted(ALT.items(), key=lambda x: x[1])[::-1]
-        make_vcf_record(chrom, pos, ref_base, DP, ALT, counts, observations)
+        ALT = [s[0] for s in sorted(ALT.items(), key=lambda x: x[1])[::-1]]
+        if ALT != []:
+            record = make_vcf_record(chrom, pos, ref_base, DP, ALT, counts, split_line[6:])
+            return record
+        else:
+            return None
 
+def get_GT(count,ALT,ref_base):
+    """return numeric genotype code given counts and alt"""
+    try:
+        nt_count = {ref_base:count[ref_base]}
+    except KeyError:
+        return './.'
+    for nt in ALT:
+        nt_count[nt] = count[nt]
+    order = sorted(nt_count.items(), key=lambda x: x[1])[::-1][:2]
+    gt = []
+    for (nt,count) in order:
+        if count / float(sum(nt_count.values())) < 0.05:
+            continue
+        if nt == ref_base:
+            gt.append('0')
+        else:
+            gt.append('%s' % (ALT.index(nt) + 1))
+    if len(gt) == 1:
+        gt = gt * 2
+    return "/".join(gt)
 
 def make_vcf_record(chrom, pos, ref_base, DP, ALT, counts, observations):
     """Call SNPs considering the observations made for all individuals, make vcf record without"""
     # Rules:
     # 1. Only alleles that contain a SNP are called. homozygous ref observations only do not count
     # 2. VCF record SNP alleles are independent from methylation VCF records in terms of ALT records.
-    output = [chrom, pos, '.', ref_base, ALT, '0', '.','DP=%s'%DP, 'DP:ADW:ADC:AD:RO:AO']
-    for sample in self.processed_samples:
+    output = [chrom, pos, '.', ref_base, ','.join(ALT), '.', '.','DP=%s'%DP, 'GT:DP:ADW:ADC:RO:AO']
+    for count,observation in zip(counts,observations):
+        values = {'DP':sum(count.values())}
+        values['ADW'] = ','.join([i.split(',')[0] for i in observation.split(':')])
+        values['ADC'] = ','.join([i.split(',')[1] for i in observation.split(':')])
+        values['GT'] = get_GT(count, ALT, ref_base)
         try:
-            allele_count = self.processed_samples[sample]["snp"][0]
-        except TypeError:
-            continue
-        # add
-        for k, v in allele_count.items():
-            if k == self.watson_record.REF:
-                ref_count += v
-                continue
-            if v != 0:
-                try:
-                    combined_allele_count[k] += v
-                except KeyError:
-                    combined_allele_count[k] = v
-    if combined_allele_count != {}:
-        # R
-        combined_count_tuple = [(self.watson_record.REF, ref_count)] + \
-                               sorted(ALT.items(), key=lambda x: x[1])[::-1]
-        # get a valid SNP record object.
-        site_obj = self.watson_record
-        # Add alt alleles in order of appearance
-        alt_alleles = []
-        for allele in [i[0] for i in combined_count_tuple]:
-            if allele != self.watson_record.REF:
-                alt_alleles.append(vcf.model._Substitution(allele))
-        if alt_alleles != []:
-            site_obj.ALT = alt_alleles
-        else:
-            # do not continue with snp calling if no alt alleles are found
-            return 0
-        site_obj.INFO['DP'] = sum(combined_allele_count.values())
-        site_obj.INFO['AD'] = [int(i[1]) for i in combined_count_tuple]
-        # TODO: check which other INFO objects could be made here
-        # Start calling samples with site object
-        samples_out = list()
-        # Keep same order for SNP file observations
-        for sample in self.watson_file.samples:
-            if not self.processed_samples[sample]["snp"]:
-                empty_model = vcf.model._Call(site_obj,
-                                              sample, tuple([0] * len(site_obj.FORMAT.split(':'))))
-                samples_out.append(empty_model)
-                continue
-            allele_count = self.processed_samples[sample]["snp"][0]
-            AO = []
-            try:
-                # Watson and Crick record references are the same.
-                RO = allele_count[self.watson_record.REF]
-            except KeyError:
-                RO = 0
-            for nt in [str(i) for i in alt_alleles]:
-                if nt in allele_count:
-                    AO.append(allele_count[nt])
+            values['RO'] = '%s' % count[ref_base]
+            for nt in ALT:
+                if count[nt] != 0:
+                    append_value = str(count[nt])
                 else:
-                    AO.append(0)
-            DP = sum(allele_count.values())
-            # call GT
-            GT = []
-            for i, (nt, count) in enumerate(combined_count_tuple):
-                if nt in allele_count:
-                    if allele_count[nt] != 0:
-                        if len(GT) <= 2:
-                            GT.append(i)
-                        else:
-                            break
-            if GT != []:
-                GT = '%s/%s' % (GT[0], GT[-1])
-            else:
-                GT = './.'
-            AD = [RO]
-            for item in AO:
-                AD.append(item)
+                    append_value = '0'
+                try:
+                    values['AO'].append(append_value)
+                except KeyError:
+                    values['AO'] = [append_value]
 
-            header = ['GT', 'DP', 'AD', 'RO', 'AO']
-            call_data = vcf.model.make_calldata_tuple(header)
-            values = [GT, DP, AD, RO, AO]
-            model = vcf.model._Call(site_obj,
-                                    sample,
-                                    call_data(*values))
-            samples_out.append(model)
+        except KeyError:
+            values['RO'] = '.'
+            values['AO'] = '.'
+        values['AO'] = ','.join(values['AO'])
+        output.append('%(GT)s:%(DP)s:%(ADW)s:%(ADC)s:%(RO)s:%(AO)s'%values)
+    vcf_line = '\t'.join(output) + '\n'
+    return vcf_line
 
-        # Sets a called SNP record as the parent record for a new SNP call object.
-        out_sites = dict()
-
-        chr = site_obj.CHROM
-        pos = site_obj.POS
-        id = site_obj.ID
-        ref = site_obj.REF
-        alt = site_obj.ALT
-        qual = site_obj.QUAL
-        filter = site_obj.FILTER
-        format = site_obj.FORMAT
-        sample_indexes = site_obj._sample_indexes
-        INFO = {'DP': sum([v[1] for v in combined_count_tuple])}
-        # TODO: make sure that all methods work for processed_record by making sure empty calls meet spec.
-        processed_record = vcf.model._Record(
-            chr, pos, id, ref,
-            alt, qual,
-            filter, INFO, format,
-            sample_indexes, samples_out
-        )
-
-        self.snp_file.write_record(processed_record)
 
 def main():
     """main function loop"""
     args = parse_args()
     make_header(args)
-    with open(args.SNP_output) as handle:
-        for line in gzip.open(args.mergedcalls):
+    count = 0
+    with open(args.SNP_output, 'w') as handle:
+        for line in open(args.mergedcalls):
             snp_record = call_SNP(line)
+            count += 1
+            if not count % 1000000:
+                print 'processed %s lines ' % count
             if snp_record:
                 handle.write(snp_record)
+    handle.close()
+    os.popen('pigz -c %s' % args.SNP_output)
 
 
 if __name__ == '__main__':
