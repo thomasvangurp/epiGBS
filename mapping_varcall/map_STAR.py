@@ -58,6 +58,17 @@ def parse_args():
     args.tmpdir = tempfile.mkdtemp(suffix='STAR', prefix='tmp', dir=args.tmpdir)
     return args
 
+def get_version():
+    """get version of current script"""
+    parent_dir = os.path.dirname(os.path.realpath(__file__))
+    while True:
+        if '.git' in os.listdir(parent_dir):
+            break
+        parent_dir = os.path.dirname(parent_dir)
+    git_log = os.path.join(parent_dir,'.git','logs','HEAD')
+
+
+
 def remove_PCR_duplicates(args):
     """us subprocess to run external remove_PCR_duplicates routine"""
     cmd =  "mark_PCR_duplicates.py --input_dir %s" % args.output_dir
@@ -357,7 +368,7 @@ def parse_sam(in_file, out_file, read_type , strand):
         if split_line[1] not in ['0', '99', '147']:
             mismatch += 1
             count += 1
-            continue
+            # continue
         char_count = ''
         clip_count = 0
         for char in split_line[5]:
@@ -370,7 +381,7 @@ def parse_sam(in_file, out_file, read_type , strand):
         if clip_count > 6:
             clip_count_total += 1
             count += 1
-            continue
+            # continue
         header = split_line[0].split('|')
         meth_pos_list = header[6:]
         out_line = [header[0]]
@@ -502,6 +513,7 @@ def main():
     """main function loop"""
     #1 get command line arguments
     args = parse_args()
+    version = get_version()
     log = open(args.log,'w')
     log.write("started run\n")
     #2 make reference genome fo STAR in appropriate directory
