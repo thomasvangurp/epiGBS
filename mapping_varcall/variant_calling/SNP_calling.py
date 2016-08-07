@@ -13,7 +13,7 @@ def parse_args():
     return args
 
 
-def make_header(args):
+def make_header(args,handle,line):
     """make vcf header for SNP output"""
     header = '\n'
     #TODO: define header properties
@@ -30,7 +30,18 @@ def combine_counts(observations, watson_ALT, crick_ALT, convert_dict, ref_base):
     crick_count = {}
     for combined_count,nt in zip(observations,'ACGT'):
         watson_count[nt], crick_count[nt] = [int(s) for s in combined_count.split(',')]
-    
+    #prevent spurious low counts to interfere with SNP calling algorithm, discard observations.
+    for nt in 'ACGT':
+        try:
+            if watson_count[nt] / float(sum(watson_count.values())) < 0.05:
+                watson_count[nt] = 0
+        except ZeroDivisionError:
+            pass
+        try:
+            if crick_count[nt] / float(sum(crick_count.values())) < 0.05:
+                crick_count[nt] = 0
+        except ZeroDivisionError:
+            pass
     # determine on which sample we should base output record
     nt_counts = {'C': 0, 'T': 0, 'G': 0, 'A': 0}
     alt_records_watson, alt_records_crick = ([], [])
@@ -239,7 +250,7 @@ def call_SNP(line):
         counts = []
         DP = 0
         ALT = {}
-        for observations in split_line[6:]:
+        for observations in split_line[5:]:
             observations = observations.split(':')
             count = combine_counts(observations, watson_ALT, crick_ALT , convert_dict, ref_base)
             for nt,value in count.items():
@@ -253,19 +264,20 @@ def call_SNP(line):
             counts.append(count)
         ALT = [s[0] for s in sorted(ALT.items(), key=lambda x: x[1])[::-1]]
         if ALT != []:
-            record = make_vcf_record(chrom, pos, ref_base, DP, ALT, counts, split_line[6:])
+            record = make_vcf_record(chrom, pos, ref_base, DP, ALT, counts, split_line[5:])
             return record
         else:
             return None
 
 def get_GT(count,ALT,ref_base):
-    """return numeric genotype code given counts and alt"""
+    """return numeric genotype code given counts of alleles"""
     try:
         nt_count = {ref_base:count[ref_base]}
     except KeyError:
         return './.'
     for nt in ALT:
         nt_count[nt] = count[nt]
+    #TODO: determine what to do if allele has 3 nucleotides.
     order = sorted(nt_count.items(), key=lambda x: x[1])[::-1][:2]
     gt = []
     for (nt,count) in order:
@@ -284,6 +296,8 @@ def make_vcf_record(chrom, pos, ref_base, DP, ALT, counts, observations):
     # Rules:
     # 1. Only alleles that contain a SNP are called. homozygous ref observations only do not count
     # 2. VCF record SNP alleles are independent from methylation VCF records in terms of ALT records.
+    #TODO: add strand evidence specification
+    #TODO: add num-het, num-hom, number called, other custom fields
     output = [chrom, pos, '.', ref_base, ','.join(ALT), '.', '.','DP=%s'%DP, 'GT:DP:ADW:ADC:RO:AO']
     for count,observation in zip(counts,observations):
         values = {'DP':sum(count.values())}
@@ -314,10 +328,12 @@ def make_vcf_record(chrom, pos, ref_base, DP, ALT, counts, observations):
 def main():
     """main function loop"""
     args = parse_args()
-    make_header(args)
+    # make_header(args,handle,line)
     count = 0
     with open(args.SNP_output, 'w') as handle:
-        for line in open(args.mergedcalls):
+        for line in os.popen("pigz -cd %s " % args.mergedcalls):
+            if not count:
+                make_header(args,handle,line)
             snp_record = call_SNP(line)
             count += 1
             if not count % 1000000:
@@ -325,7 +341,8 @@ def main():
             if snp_record:
                 handle.write(snp_record)
     handle.close()
-    os.popen('pigz -c %s' % args.SNP_output)
+    os.popen('bgzip %s' % args.SNP_output)
+    os.popen('tabix -p vcf %s.gz' % args.SNP_output)
 
 
 if __name__ == '__main__':

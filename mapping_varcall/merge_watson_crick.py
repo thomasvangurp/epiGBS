@@ -59,7 +59,7 @@ def merge(args):
     crick_handle = os.popen("pigz -cd %s" % args.crick)
     read_watson = True
     read_crick = True
-    #TODO: define output header
+    #TODO: define output header, should include sample names
     output = open(args.output, 'w')
     count = 0
     while True:
@@ -69,6 +69,7 @@ def merge(args):
             crick_line = crick_handle.readline()
         if watson_line.startswith('#CHROM'):
             watson_header = watson_line[:-1].split('\t')
+            output.write(watson_line)
             read_watson = False
         if crick_line.startswith('#CHROM'):
             crick_header = crick_line[:-1].split('\t')
@@ -80,14 +81,20 @@ def merge(args):
     while True:
         if read_watson:
             while True:
-                watson_line = watson_handle.next()[:-1].split('\t')
-                if watson_line == ['']:
+                try:
+                    watson_line = watson_handle.next()[:-1].split('\t')
+                except StopIteration:
+                    watson_line = ['']
                     break
                 if 'INDEL' not in watson_line:
                     break
         if read_crick:
             while True:
-                crick_line = crick_handle.next()[:-1].split('\t')
+                try:
+                    crick_line = crick_handle.next()[:-1].split('\t')
+                except StopIteration:
+
+                    break
                 if crick_line == ['']:
                     break
                 if 'INDEL' not in crick_line:
