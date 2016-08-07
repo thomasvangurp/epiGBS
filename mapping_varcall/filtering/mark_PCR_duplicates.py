@@ -76,6 +76,7 @@ def remove_PCR_duplicates(bam_in, bam_out, ref):
     for cluster in clusters:
         #TODO: detect enzyme from barcode file to enable other combinations.
         enzymes = ["Csp6I","NsiI"]
+        cluster_seq_len = len(str(cluster.seq).upper().replace('N',''))
         if len(cluster.seq) > 350:
             #this must be a reference genome / chromosome: look for regions with mapping reads
             regions = get_regions(cluster,enzymes)
@@ -145,6 +146,13 @@ def remove_PCR_duplicates(bam_in, bam_out, ref):
                         read_count[sample]['dup_count'] += 1
                     except KeyError:
                         read_count[sample]['dup_count'] = 1
+                if tag_dict['AS'] < 0.9 * cluster_seq_len:
+                    #alignment score lower than read length, subset read
+                    read.is_qcfail = True
+                    try:
+                        read_count[sample]['qc_fail'] += 1
+                    except KeyError:
+                        read_count[sample]['qc_fail'] = 1
                 out_handle.write(read)
     print 'Sample:\tReads:\tDuplicates:\tDuplicate rate:'
     for key , subdict in sorted(read_count.items()):
@@ -153,6 +161,15 @@ def remove_PCR_duplicates(bam_in, bam_out, ref):
             dup_count = subdict['dup_count']
             dup_pct = dup_count / float(count)
             print '%s\t%s\t%s\t%.2f%%'%(key,count,dup_count,100*dup_pct)
+        else:
+            print '%s \t%s \t0\t0%%' % (key, count)
+    print 'Sample:\tReads:\tQC-fail:\tQC-fail rate:'
+    for key , subdict in sorted(read_count.items()):
+        count = subdict['count']
+        if 'qc_fail' in subdict:
+            qc_fail = subdict['qc_fail']
+            qc_fail_pct = dup_count / float(count)
+            print '%s\t%s\t%s\t%.2f%%'%(key,count,qc_fail,100*qc_fail_pct)
         else:
             print '%s \t%s \t0\t0%%' % (key, count)
     out_handle.close()
