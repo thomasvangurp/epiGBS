@@ -343,16 +343,10 @@ def map_STAR(args):
 def parse_sam(in_file, out_file, read_type , strand):
     """parse sam file and write correct output"""
     out_handle = open(out_file , 'a')
-    if read_type == 'merged':
-        if strand == 'watson':
-            nt = ['C']
-        else:
-            nt = ['G']
+    if strand == 'watson':
+        nt = ['C']
     else:
-        if strand == 'watson':
-            nt = ['C']# , 'G']
-        else:
-            nt = ['G']#, 'C']
+        nt = ['G']
     count = 0
     print 'Warning, only works for forward mapped reads'
     mismatch = 0
