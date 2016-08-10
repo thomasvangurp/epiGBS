@@ -308,7 +308,7 @@ def dereplicate_reads(in_files,args):
             file_in = in_files[strand][name]
             file_out = '.'.join(file_in.split('.')[:-2]) + '.derep.' + file_in.split('.')[-2]
             in_files[strand][name] = [file_in]
-            cmd = [vsearch +' -derep_fulllength %s -sizeout -minuniquesize 1 -output %s'%(file_in,file_out)]
+            cmd = [vsearch +' -derep_fulllength %s -sizeout -minuniquesize 2 -output %s'%(file_in,file_out)]
             log = "Dereplicate full_length of %s using vsearch"%(strand)
             run_subprocess(cmd,args,log)
             name_out = name + "_derep"
