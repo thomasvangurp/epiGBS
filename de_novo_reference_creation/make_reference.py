@@ -233,69 +233,68 @@ def join_non_overlapping(in_files,args):
 def trim_and_zip(in_files,args):
     """Trim fastq files and return using pigz"""
     in_files['trimmed'] = {}
-    #Process single files
-    #TODO: determine number of nucleotide trimmed from reads dependent on restriction enzyme being used.
-    log = 'Process single watson reads: Trim first %s bases of R1'%'3'
+
+    log = 'Zip single watson reads: '
     file_in = in_files['watson']['single_R1']
     if args.outputdir:
-        file_out = os.path.join(args.outputdir, 'Unassembled.R1.watson_trimmed.fq.gz')
+        file_out = os.path.join(args.outputdir, 'Unassembled.R1.watson.fq.gz')
     else:
-        file_out = '_'.join(args.watson_forward.split('_')[:-1])+'.unassembled.watson.R1.trimmed.fq.gz'
+        file_out = '_'.join(args.watson_forward.split('_')[:-1])+'.Unassembled.watson.R1.fq.gz'
     in_files['trimmed']['watson_R1'] = file_out
-    cmd = [seqtk + ' trimfq -b 4 %s |pigz -c > %s'%(file_in,file_out)]
+    cmd = [seqtk + ' seq %s |pigz -c > %s'%(file_in,file_out)]
     run_subprocess(cmd,args,log)
 
-    log = 'Process single watson reads: reverse complement but no trimming required for R2 '
+    log = 'Process single watson reads: reverse complement required for R2 '
     file_in = in_files['watson']['single_R2']
     if args.outputdir:
-        file_out = os.path.join(args.outputdir, 'Unassembled.R2.crick_trimmed.fq.gz')
+        file_out = os.path.join(args.outputdir, 'Unassembled.R2.crick.fq.gz')
     else:
-        file_out = '_'.join(args.watson_reverse.split('_')[:-1])+'.unassembled.watson.R2.fq.gz'
+        file_out = '_'.join(args.watson_reverse.split('_')[:-1])+'.Unassembled.watson.R2.fq.gz'
     in_files['trimmed']['watson_R2'] = file_out
     #Take reverse complement as pear outputs R2 in reverse complement
-    cmd = [seqtk + ' seq %s |%s seq -r - |pigz -c > %s'%(file_in,seqtk,file_out)]
+    cmd = [seqtk + ' seq -r %s |pigz -c > %s'%(file_in, file_out)]
     run_subprocess(cmd,args,log)
 
     log = 'Process single crick reads: no trimming required for R1'
     file_in = in_files['crick']['single_R1']
     if args.outputdir:
-        file_out = os.path.join(args.outputdir, 'Unassembled.R1.watson_trimmed.fq.gz')
+        file_out = os.path.join(args.outputdir, 'Unassembled.R1.watson.fq.gz')
     else:
-        file_out = '_'.join(args.crick_forward.split('_')[:-1])+'.unassembled.crick.R1.fq.gz'
+        file_out = '_'.join(args.crick_forward.split('_')[:-1])+'.Unassembled.crick.R1.fq.gz'
     in_files['trimmed']['crick_R1'] = file_out
     cmd = [seqtk + ' seq %s |pigz -c >> %s'%(file_in,file_out)]
     run_subprocess(cmd,args,log)
 
-    log = 'Process single crick reads: reverse complement an trim first 4 of R2'
+    log = 'Process single crick reads: reverse complement for R2'
     file_in = in_files['crick']['single_R2']
     if args.outputdir:
-        file_out = os.path.join(args.outputdir, 'Unassembled.R2.crick_trimmed.fq.gz')
+        file_out = os.path.join(args.outputdir, 'Unassembled.R2.crick.fq.gz')
     else:
-        file_out = '_'.join(args.crick_reverse.split('_')[:-1])+'.unassembled.crick.R2.trimmed.fq.gz'
+        file_out = '_'.join(args.crick_reverse.split('_')[:-1])+'.Unassembled.crick.R2.fq.gz'
     in_files['trimmed']['crick_R2'] = file_out
     #Take reverse complement as pear outputs R2 in reverse complement
-    cmd = [seqtk + ' trimfq -e 4 %s |%s seq -r - |pigz -c >> %s'%(file_in,seqtk,file_out)]
+    cmd = [seqtk + ' seq -r %s |pigz -c >> %s'%(file_in,file_out)]
     run_subprocess(cmd,args,log)
 
     #Process merged files
-    log = 'Process merged watson reads: Trim first 4 bases of R1'
+    log = 'Process merged watson reads:'
     file_in = in_files['watson']['merged']
     if args.outputdir:
-        file_out = os.path.join(args.outputdir, 'Assembled.trimmed.fq.gz')
+        file_out = os.path.join(args.outputdir, 'Assembled.fq.gz')
     else:
-        file_out = '_'.join(args.watson_forward.split('_')[:-1])+'.assembled.watson.trimmedR1.fq.gz'
+        file_out = '_'.join(args.watson_forward.split('_')[:-1])+'.Assembled.R1.fq.gz'
     in_files['trimmed']['watson_merged'] = file_out
-    cmd = [seqtk + ' trimfq -b 4 %s |pigz -c > %s'%(file_in,file_out)]
+    cmd = [seqtk + ' seq %s |pigz -c > %s'%(file_in,file_out)]
     run_subprocess(cmd,args,log)
 
-    log = 'Process merged crick reads: Trim first 4 bases of R2'
+    log = 'Process merged crick reads:'
     file_in = in_files['crick']['merged']
     if args.outputdir:
-        file_out = os.path.join(args.outputdir, 'Assembled.trimmed.fq.gz')
+        file_out = os.path.join(args.outputdir, 'Assembled.fq.gz')
     else:
-        file_out = '_'.join(args.crick_forward.split('_')[:-1])+'.assembled.crick.trimmedR2.fq.gz'
+        file_out = '_'.join(args.crick_forward.split('_')[:-1])+'.Assembled.fq.gz'
     in_files['trimmed']['crick_merged'] = file_out
-    cmd = [seqtk + ' trimfq -e 4 %s |pigz -c >> %s'%(file_in,file_out)]
+    cmd = [seqtk + ' seq %s |pigz -c >> %s'%(file_in,file_out)]
     run_subprocess(cmd,args,log)
 
     return in_files
