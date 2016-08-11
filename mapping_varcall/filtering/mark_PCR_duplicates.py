@@ -98,6 +98,7 @@ def remove_PCR_duplicates(bam_in, bam_out, ref):
             #     cluster_is_paired = False
             read_out = {}
             read = None
+            qc_fail = set()
             for read in reads:
                 tag_dict = dict(read.tags)
                 try:
@@ -115,6 +116,23 @@ def remove_PCR_duplicates(bam_in, bam_out, ref):
                         read_out[sample][tag][read.qname]+= AS
                     except KeyError:
                         read_out[sample][tag][read.qname] = AS
+                if tag_dict['AS'] < 0.9 * cluster_seq_len:
+                    #alignment score lower than read length, subset read
+                    read.is_qcfail = True
+                    #update the 'failed' dictionary to exclude this read
+                    qc_fail.update([read.qname])
+                    try:
+                        read_count[sample]['qc_fail'] += 1
+                    except KeyError:
+                        if sample not in read_count:
+                            read_count[sample] = {}
+                        read_count[sample]['qc_fail'] = 1
+                # if read.is_paired and not read.is_proper_pair:
+                #     read.is_qcfail = True
+                #     try:
+                #         read_count[sample]['qc_fail'] += 1
+                #     except KeyError:
+                #         read_count[sample]['qc_fail'] = 1
             if read == None:
                 #no reads were found for this contig, continue
                 continue
@@ -139,6 +157,8 @@ def remove_PCR_duplicates(bam_in, bam_out, ref):
                         read_count[sample] = {'count':1}
                     else:
                         read_count[sample]['count'] =  1
+                if read.qname in qc_fail:
+                    read.is_qcfail
                 if read.qname != qname:
                     #Read with duplicate tag with a lower quality score is marked as a PCR duplicate.
                     read.is_duplicate = True
@@ -146,13 +166,6 @@ def remove_PCR_duplicates(bam_in, bam_out, ref):
                         read_count[sample]['dup_count'] += 1
                     except KeyError:
                         read_count[sample]['dup_count'] = 1
-                if tag_dict['AS'] < 0.9 * cluster_seq_len:
-                    #alignment score lower than read length, subset read
-                    read.is_qcfail = True
-                    try:
-                        read_count[sample]['qc_fail'] += 1
-                    except KeyError:
-                        read_count[sample]['qc_fail'] = 1
                 out_handle.write(read)
     print 'Sample:\tReads:\tDuplicates:\tDuplicate rate:'
     for key , subdict in sorted(read_count.items()):
@@ -187,7 +200,7 @@ def main():
     #2 Remove PCR duplicates.
     if not args.input and args.input_dir:
         for strand in ['watson', 'crick']:
-            print "started PCR duplicate removal on %s for %s strand" % (args.input, strand)
+            print "started PCR duplicate removal for %s strand" % (strand)
             in_bam = os.path.join(args.input_dir,'%s.bam' % strand)
             out_bam = os.path.join(args.input_dir,'%s.dedup.bam' % strand)
             remove_PCR_duplicates(in_bam, out_bam, args.reference)
