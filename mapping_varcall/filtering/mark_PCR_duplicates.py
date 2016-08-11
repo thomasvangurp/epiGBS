@@ -182,7 +182,7 @@ def remove_PCR_duplicates(bam_in, bam_out, ref):
         count = subdict['count']
         if 'qc_fail' in subdict:
             qc_fail = subdict['qc_fail']
-            qc_fail_pct = dup_count / float(count)
+            qc_fail_pct = qc_fail / float(count)
             print '%s\t%s\t%s\t%.2f%%'%(key,count,qc_fail,100*qc_fail_pct)
         else:
             print '%s \t%s \t0\t0%%' % (key, count)
