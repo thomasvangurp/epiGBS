@@ -5,6 +5,9 @@ import os
 import math
 import gzip
 import tempfile
+import urllib
+import json
+import ssl
 from Bio import SeqIO
 
 __author__ = 'thomasvangurp'
@@ -37,11 +40,13 @@ def parse_args():
                         help='Number of threads to used where multithreading is possible')
     parser.add_argument('--output_dir',
                         help='Choose output directory')
+    parser.add_argument('--extraflags',
+                        help='extra flags for testing')
     args = parser.parse_args()
     if args.input_dir:
-        args.reads_R1 = os.path.join(args.input_dir,'Unassembled.R1.watson_trimmed.fq.gz')
-        args.reads_R2 = os.path.join(args.input_dir,'Unassembled.R2.crick_trimmed.fq.gz')
-        args.merged = os.path.join(args.input_dir,'Assembled.trimmed.fq.gz')
+        args.reads_R1 = os.path.join(args.input_dir,'Unassembled.R1.watson.fq.gz')
+        args.reads_R2 = os.path.join(args.input_dir,'Unassembled.R2.crick.fq.gz')
+        args.merged = os.path.join(args.input_dir,'Assembled.fq.gz')
         args.reference = os.path.join(args.input_dir,'consensus_cluster.renamed.fa')
     if args.output_dir:
         if not os.path.exists(args.output_dir):
@@ -66,6 +71,13 @@ def get_version():
             break
         parent_dir = os.path.dirname(parent_dir)
     git_log = os.path.join(parent_dir,'.git','logs','HEAD')
+    handle = open(git_log,'r')
+    log_lines = [l.split('\t') for l in handle.readlines()]
+    #now get latest github commit
+    url = 'https://api.github.com/repos/thomasvangurp/epiGBS/commits'
+    context = ssl._create_unverified_context()
+    result = json.load(urllib.urlopen(url,context=context))
+    print ''
 
 
 
@@ -316,6 +328,8 @@ def map_STAR(args):
 
             cmd += " --outSAMattributes NM MD AS --outSAMtype SAM"
             cmd += " --outFileNamePrefix %s" % (os.path.join(args.output_dir,'%s_%s'%(type,strand)))
+            cmd += " --outReadsUnmapped Fastx" #output of unmapped reads for inspection
+            cmd += " --scoreGapATAC -2 --scoreGapNoncan -2"
             #outFilterScoreMinOverLread : float: sam as outFilterMatchNmin, but normalized to the read length (sum of mates’ lengths for paired-end reads)
             #outFilterMatchNminOverLread: float: same as outFilterScoreMin, but normalized to read length (sum of mates’ lengths for paired-end reads)
 
@@ -332,6 +346,8 @@ def map_STAR(args):
                    " --outFilterMultimapNmax 1" \
                    " --scoreInsOpen -1" \
             #make sure we have a bam file sorted by name
+            if args.extraflags:
+                cmd += ' --%s' % args.extraflags
             log = "run STAR for % strand on %s reads"%(strand, type)
             run_subprocess([cmd],args, log)
             log = "write final log of STAR to normal log"
@@ -348,7 +364,7 @@ def parse_sam(in_file, out_file, read_type , strand):
     else:
         nt = ['G']
     count = 0
-    print 'Warning, only works for forward mapped reads'
+    # print 'Warning, only works for forward mapped reads'
     mismatch = 0
     clip_count_total = 0
     for line in open(in_file, 'r'):
@@ -384,7 +400,10 @@ def parse_sam(in_file, out_file, read_type , strand):
         try:
             meth_pos = [int(n) for n in meth_pos_list[-modulo_line_no].split(',')]
             for n in meth_pos:
-                assert seq[n] in ['T','A']
+                if n >= len(seq):
+                    break
+                if seq[n] not in ['T','A']:
+                    break
                 seq[n] = nt[-modulo_line_no]
         except ValueError:
             pass
@@ -500,14 +519,14 @@ def clean(args):
         run_subprocess(cmd,args,log)
     log = "remove sam file outputs from output dir"
     cmd = ['rm %s/*Aligned.out.sam' % args.output_dir]
-    # run_subprocess(cmd, args, log)
+    run_subprocess(cmd, args, log)
 
 
 def main():
     """main function loop"""
     #1 get command line arguments
     args = parse_args()
-    version = get_version()
+    # version = get_version()
     log = open(args.log,'w')
     log.write("started run\n")
     #2 make reference genome fo STAR in appropriate directory
