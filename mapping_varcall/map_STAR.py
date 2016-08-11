@@ -88,6 +88,7 @@ def remove_PCR_duplicates(args):
     cmd += " -r %s" % args.reference
     log = "Removal of PCR duplicates"
     run_subprocess([cmd], args, log)
+    return args
 
 def run_subprocess(cmd,args,log_message):
     "Run subprocess under standardized settings"
@@ -172,8 +173,7 @@ def process_reads_joined(args):
     args.watson_joined_r2 = watson_joined_r2.name
     args.crick_joined_r1 = crick_joined_r1.name
     args.crick_joined_r2 = crick_joined_r2.name
-    watson_convert = ['C', 'T']
-    crick_convert = ['G', 'A']
+
     print 'Started processing joined reads'
     if args.reads_R1.endswith('.gz'):
         r1_handle = gzip.open(args.reads_R1, 'rb')
@@ -323,6 +323,7 @@ def map_STAR(args):
             if type == 'merged':
                 cmd += " --readFilesIn %s" % vars(args)['%s_%s' % (strand, type)]
             else:
+                #TODO: define custom parameters for PE reads
                 cmd += " --readFilesIn %s " %   vars(args)['%s_%s_r1' % (strand, type)]
                 cmd += " %s" %                  vars(args)['%s_%s_r2' % (strand, type)]
 
@@ -333,21 +334,19 @@ def map_STAR(args):
             #outFilterScoreMinOverLread : float: sam as outFilterMatchNmin, but normalized to the read length (sum of mates’ lengths for paired-end reads)
             #outFilterMatchNminOverLread: float: same as outFilterScoreMin, but normalized to read length (sum of mates’ lengths for paired-end reads)
 
-            cmd += " --outFilterScoreMinOverLread 0 --outFilterMatchNminOverLread 0 "
-
             # –outFilterMultimapNmax 1 int: maximum number of loci the read is allowed to map to. Alignments (all of
             # them) will be output only if the read maps to no more loci than this value.
-            cmd += " -–outFilterMultimapNmax 1 --outFilterMismatchNoverLmax 0.95"
+            cmd += " --outFilterMismatchNoverLmax 0.95"
             # TODO: implement --alignEndsType endtoend mapping after joined reads are merged
-            cmd += "--outFilterMatchNminOverLread 0.9 --scoreGap -4 --seedPerReadNmax 5000" \
-                   " --alignEndsType Extend5pOfRead1" \
+            cmd += "--outFilterMatchNminOverLread 0.9 --scoreGap -4 " \
+                   " --alignEndsType EndToEnd" \
                    " --alignSoftClipAtReferenceEnds No" \
                    " --outSAMorder PairedKeepInputOrder" \
                    " --outFilterMultimapNmax 1" \
                    " --scoreInsOpen -1" \
             #make sure we have a bam file sorted by name
             if args.extraflags:
-                cmd += ' --%s' % args.extraflags
+                cmd += ' %s' % args.extraflags
             log = "run STAR for % strand on %s reads"%(strand, type)
             run_subprocess([cmd],args, log)
             log = "write final log of STAR to normal log"
@@ -517,8 +516,12 @@ def clean(args):
     if args.tmpdir.endswith('STAR'):
         cmd = ['rm -rf %s' % (args.tmpdir)]
         run_subprocess(cmd,args,log)
-    log = "remove sam file outputs from output dir"
-    cmd = ['rm %s/*Aligned.out.sam' % args.output_dir]
+    log = "remove tmp files from output dir"
+    cmd = ['rm -rf %s/merged*' % args.output_dir]
+    run_subprocess(cmd, args, log)
+    cmd = ['rm -rf %s/joined*' % args.output_dir]
+    run_subprocess(cmd, args, log)
+    cmd = ['rm -rf %s/joined* header.sam' % args.output_dir]
     run_subprocess(cmd, args, log)
 
 
@@ -526,7 +529,7 @@ def main():
     """main function loop"""
     #1 get command line arguments
     args = parse_args()
-    # version = get_version()
+    # version = get_version()alignSoftClipAtReferenceEnds
     log = open(args.log,'w')
     log.write("started run\n")
     #2 make reference genome fo STAR in appropriate directory
