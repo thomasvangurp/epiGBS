@@ -127,12 +127,13 @@ def remove_PCR_duplicates(bam_in, bam_out, ref):
                         if sample not in read_count:
                             read_count[sample] = {}
                         read_count[sample]['qc_fail'] = 1
-                # if read.is_paired and not read.is_proper_pair:
-                #     read.is_qcfail = True
-                #     try:
-                #         read_count[sample]['qc_fail'] += 1
-                #     except KeyError:
-                #         read_count[sample]['qc_fail'] = 1
+                if read.is_paired and not read.is_proper_pair:
+                    read.is_qcfail = True
+                    qc_fail.update([read.qname])
+                    try:
+                        read_count[sample]['qc_fail'] += 1
+                    except KeyError:
+                        read_count[sample]['qc_fail'] = 1
             if read == None:
                 #no reads were found for this contig, continue
                 continue
@@ -158,7 +159,7 @@ def remove_PCR_duplicates(bam_in, bam_out, ref):
                     else:
                         read_count[sample]['count'] =  1
                 if read.qname in qc_fail:
-                    read.is_qcfail
+                    read.is_qcfail = True
                 if read.qname != qname:
                     #Read with duplicate tag with a lower quality score is marked as a PCR duplicate.
                     read.is_duplicate = True
