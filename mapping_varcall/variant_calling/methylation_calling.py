@@ -34,23 +34,44 @@ def make_header(args,handle,split_line):
 
 def check_contect_SNP(ref_base, chrom, pos, context, line, SNP_nearby):
     """return dictionary with lines changes per context"""
-    context_dict = {}
+    context_dict = {context:line}
+    if context == 'CG':
+        #TODO: methylation polymorphis changed induced by SNP leading to absence of G should result in CHG or CHH!
+        return context_dict
     if ref_base == 'C':
-        to_check = {pos + 1: 'G', pos + 2: 'G'}
+        if context == 'CHH':
+            to_check = {pos + 1: 'CG', pos + 2: 'CHG'}
+        elif context == 'CHG':
+            to_check = {pos + 1: 'CG'}
     else:
-        to_check = {pos - 1: 'C', pos - 2: 'C'}
+        if context == 'CHH':
+            to_check = {pos - 1: 'CG', pos - 2: 'CHG'}
+        elif context == 'CHG':
+            to_check = {pos - 1: 'CG'}
     for SNP in SNP_nearby:
         if SNP[0] == chrom:
             if int(SNP[1]) > pos + 2:
                 break
             if int(SNP[1]) in to_check:
-                if ref_base == 'C' and 'G' in SNP[4]:
-                    print ''
-                elif ref_base == 'G' and 'C' in SNP[4]:
-                    print ''
+                new_context = to_check[int(SNP[1])]
+                if (ref_base == 'C' and 'G' in SNP[4]) or (ref_base == 'G' and 'C' in SNP[4]):
+                    for n,call in enumerate(SNP[9:]):
+                        if call.split(':')[0] not in ['./.','0/0']:
+                            if new_context == 'CHG' and 'CG' in context_dict:
+                                #A C in CGG context is CG, not CHG. if CG was called previously skip this call.
+                                if context_dict['CG'][n + 5] != '':
+                                    continue
+                            try:
+                                context_dict[new_context][n + 5] = call
+                                context_dict[context][n + 5] = ':'.join(['0,0']*4)
+                            except KeyError:
+                                context_dict[new_context] = context_dict[context][:5] + [':'.join(['0,0']*4)] * (len(line) - 5 )
+                                context_dict[new_context][n + 5] = context_dict[context][n + 5]
+                                context_dict[context][n + 5] = ':'.join(['0,0']*4)
+
         else:
             break
-    return context
+    return context_dict
 
 def calc_context(split_line, genome, SNP_nearby):
     """
@@ -84,6 +105,20 @@ def calc_context(split_line, genome, SNP_nearby):
     context = check_contect_SNP(ref_base, chrom, pos, context, split_line, SNP_nearby)
     return context
 
+def get_range(args):
+    """Get range for which methylation polymorphisms can be called given enzyme overhang"""
+    #parse barcodes for enzymes being used
+    with open(args.barcodes,'r') as barcode_handle:
+        header = barcode_handle.readline().rstrip('\n').split('\t')
+        split_line =  barcode_handle.readline().rstrip('\n').split('\t')
+        enzyme_left = split_line[header.index('ENZ_R1')]
+        enzyme_right = split_line[header.index('ENZ_R2')]
+        for enzyme in Restriction.AllEnzymes:
+            if "%s"%(enzyme) == enzyme_left:
+                left_start = len(enzyme.ovhgseq)
+            elif "%s"%(enzyme) == enzyme_right:
+                right_end = -1 *len(enzyme.ovhgseq)
+    return left_start,right_end
 
 def is_SNP(chrom, pos, SNP_nearby):
     """determine if variant is also in SNPs"""
@@ -286,11 +321,10 @@ def main():
     args = parse_args()
     # make_header(args,handle,line)
     count = 0
-    #TODO: disable methylation calling in enzyme recognition site
+    enz_range = get_range(args)
     reference_genome = SeqIO.to_dict(SeqIO.parse(args.reference, "fasta"))
     SNP_nearby = []
     igv_handle = open(args.heatmap_output,'w')
-
     with open(args.methylation_output, 'w') as handle:
         with os.popen("pigz -cd %s" % args.SNP_input) as SNP_handle:
             #read all lines with comments
@@ -300,7 +334,7 @@ def main():
                     SNP_nearby.append(SNP)
                     break
             # for line in os.popen("pigz -cd %s " % args.mergedcalls):
-            for line in open(args.mergedcalls,'r'):
+            for line in gzip.open(args.mergedcalls,'r'):
                 split_line = line.rstrip('\n').split('\t')
                 if not count and line.startswith('#'):
                     header = make_header(args,handle,split_line)
@@ -308,20 +342,25 @@ def main():
                     igv_handle.write(igv_header)
                     handle.write(header)
                     continue
+                if split_line[2] not in ['C','G']:
+                    #skip ref position with no CG
+                    continue
                 SNP_nearby = get_SNP(SNP_handle, split_line, SNP_nearby)
                 #remove methylation variation observations distorted by SNP observations
                 split_line = remove_SNP(split_line, SNP_nearby)
-                context = calc_context(split_line, reference_genome, SNP_nearby)
-                #if multiple contexts results, give key-value pairs for context/line
-                meth_record = methylation_calling(split_line, context, SNP_nearby)
-                if meth_record:
-                    igv_record = make_IGV_output(meth_record)
-                    igv_handle.write(igv_record)
+                context_dict = calc_context(split_line, reference_genome, SNP_nearby)
                 count += 1
                 if not count % 1000000:
                     print 'processed %s lines ' % count
-                if meth_record:
-                    handle.write('\t'.join([str(s) for s in meth_record]) + '\n')
+                #if multiple contexts results, give key-value pairs for context/line
+                for context, split_line in sorted(context_dict.items()):
+                    #TODO: change field code for SNP induced different meth contexts
+                    meth_record = methylation_calling(split_line, context, SNP_nearby)
+                    if meth_record:
+                        igv_record = make_IGV_output(meth_record)
+                        igv_handle.write(igv_record)
+                    if meth_record:
+                        handle.write('\t'.join([str(s) for s in meth_record]) + '\n')
     handle.close()
     igv_handle.close()
     # os.popen('bgzip -f %s' % args.SNP_output)
