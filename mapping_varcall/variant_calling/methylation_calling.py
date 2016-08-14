@@ -129,7 +129,10 @@ def is_SNP(chrom, pos, SNP_nearby):
             break
         else:
             SNP = None
-    return SNP
+    try:
+        return SNP
+    except UnboundLocalError:
+        return None
 
 def methylation_calling(split_line, context, SNP_nearby):
     """
