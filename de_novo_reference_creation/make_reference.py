@@ -110,17 +110,17 @@ def merge_reads(args):
         else:
             head = ''
         if args.forward.endswith('.gz'):
-            cat = 'pigz -cd '
+            cat = 'pigz -p %s -cd '%args.threads
         else:
             cat = 'cat '
         if strand == 'watson':
             grep_watson = "|grep 'Watson\|watson' -A 3 |sed '/^--$/d'"
-            cmd1 = [ cat + args.forward + head + grep_watson + '|pigz -c >'+fwd_out.name]
-            cmd2 = [ cat  + args.reverse + head + grep_watson + '|pigz -c >'+rev_out.name]
+            cmd1 = [ cat + args.forward + head + grep_watson + '|pigz -p %s -c >'%(args.threads)+fwd_out.name]
+            cmd2 = [ cat  + args.reverse + head + grep_watson + '|pigz -p %s -c >'%(args.threads)+rev_out.name]
         else:
             grep_crick = "|grep 'Crick\|crick' -A 3 |sed '/^--$/d'"
-            cmd1 = [cat + args.forward + head + grep_crick + '|pigz -c  >'+fwd_out.name]
-            cmd2 = [cat + args.reverse + head + grep_crick + '|pigz -c  >'+rev_out.name]
+            cmd1 = [cat + args.forward + head + grep_crick + '|pigz -p %s -c  >'%(args.threads)+fwd_out.name]
+            cmd2 = [cat + args.reverse + head + grep_crick + '|pigz -p %s -c  >'%(args.threads)+rev_out.name]
         log = "Write input files to tmpdir using gzcat"
         run_subprocess(cmd1,args,log)
         run_subprocess(cmd2,args,log)
@@ -159,10 +159,10 @@ def remove_methylation(in_files,args):
             file_out += '.gz'
             if strand == 'watson':
                 #sed only replaces values in lines that only contain valid nucleotides
-                cmd = ["sed '/^[A,C,G,T,N]*$/s/C/T/g' "+value + "| pigz -c >"+file_out]
+                cmd = ["sed '/^[A,C,G,T,N]*$/s/C/T/g' "+value + "| pigz -p %s -c >"%(args.threads)+file_out]
             else:
                 #sed only replaces values in lines that only contain valid nucleotides
-                cmd = ["sed '/^[A,C,G,T,N]*$/s/G/A/g' "+value + "| pigz -c >"+file_out]
+                cmd = ["sed '/^[A,C,G,T,N]*$/s/G/A/g' "+value + "| pigz -p %s -c >"%(args.threads)+file_out]
             log = "use sed to remove methylation variation in %s_%s"%(strand,key)
             run_subprocess(cmd,args,log)
             in_files[strand][name_out] = file_out
@@ -210,9 +210,9 @@ def join_fastq(r1,r2,outfile,args):
         max_len_R1 = 200
         max_len_R2 = 200
     #Trim the reads up to the min expected length to improve de novo reference creation for joined reads
-    cmd = ["paste <(pigz -cd %s |seqtk seq -A - | cut -c1-%s) " % (r1, max_len_R1) +
-           "<(pigz -cd %s |seqtk seq -A -|cut -c1-%s)|cut -f1-5" % (r2, max_len_R2)+
-           "|sed '/^>/!s/\t/NNNNNNNN/g' |pigz -c > %s" % outfile]
+    cmd = ["paste <(pigz -p %s -cd %s |seqtk seq -A - | cut -c1-%s) " % (args.threads, r1, max_len_R1) +
+           "<(pigz -p %s -cd %s |seqtk seq -A -|cut -c1-%s)|cut -f1-5" % (args.threads, r2, max_len_R2)+
+           "|sed '/^>/!s/\t/NNNNNNNN/g' |pigz -p %s -c > %s" % (args.threads, outfile)]
     log = "Combine joined fastq file"
     run_subprocess(cmd,args,log)
     return True
@@ -241,7 +241,7 @@ def trim_and_zip(in_files,args):
     else:
         file_out = '_'.join(args.watson_forward.split('_')[:-1])+'.Unassembled.watson.R1.fq.gz'
     in_files['trimmed']['watson_R1'] = file_out
-    cmd = [seqtk + ' seq %s |pigz -c > %s'%(file_in,file_out)]
+    cmd = [seqtk + ' seq %s |pigz -p %s -c > %s'%(file_in, args.threads, file_out)]
     run_subprocess(cmd,args,log)
 
     log = 'Process single watson reads: reverse complement required for R2 '
@@ -252,7 +252,7 @@ def trim_and_zip(in_files,args):
         file_out = '_'.join(args.watson_reverse.split('_')[:-1])+'.Unassembled.watson.R2.fq.gz'
     in_files['trimmed']['watson_R2'] = file_out
     #Take reverse complement as pear outputs R2 in reverse complement
-    cmd = [seqtk + ' seq -r %s |pigz -c > %s'%(file_in, file_out)]
+    cmd = [seqtk + ' seq -r %s |pigz -p %s -c > %s'%(file_in, args.threads, file_out)]
     run_subprocess(cmd,args,log)
 
     log = 'Process single crick reads: no trimming required for R1'
@@ -262,7 +262,7 @@ def trim_and_zip(in_files,args):
     else:
         file_out = '_'.join(args.crick_forward.split('_')[:-1])+'.Unassembled.crick.R1.fq.gz'
     in_files['trimmed']['crick_R1'] = file_out
-    cmd = [seqtk + ' seq %s |pigz -c >> %s'%(file_in,file_out)]
+    cmd = [seqtk + ' seq %s |pigz -p %s -c >> %s'%(file_in, args.threads, file_out)]
     run_subprocess(cmd,args,log)
 
     log = 'Process single crick reads: reverse complement for R2'
@@ -273,7 +273,7 @@ def trim_and_zip(in_files,args):
         file_out = '_'.join(args.crick_reverse.split('_')[:-1])+'.Unassembled.crick.R2.fq.gz'
     in_files['trimmed']['crick_R2'] = file_out
     #Take reverse complement as pear outputs R2 in reverse complement
-    cmd = [seqtk + ' seq -r %s |pigz -c >> %s'%(file_in,file_out)]
+    cmd = [seqtk + ' seq -r %s |pigz -p %s -c >> %s'%(file_in, args.threads, file_out)]
     run_subprocess(cmd,args,log)
 
     #Process merged files
@@ -284,7 +284,7 @@ def trim_and_zip(in_files,args):
     else:
         file_out = '_'.join(args.watson_forward.split('_')[:-1])+'.Assembled.R1.fq.gz'
     in_files['trimmed']['watson_merged'] = file_out
-    cmd = [seqtk + ' seq %s |pigz -c > %s'%(file_in,file_out)]
+    cmd = [seqtk + ' seq %s |pigz -p %s -c > %s'%(file_in, args.threads, file_out)]
     run_subprocess(cmd,args,log)
 
     log = 'Process merged crick reads:'
@@ -294,7 +294,7 @@ def trim_and_zip(in_files,args):
     else:
         file_out = '_'.join(args.crick_forward.split('_')[:-1])+'.Assembled.fq.gz'
     in_files['trimmed']['crick_merged'] = file_out
-    cmd = [seqtk + ' seq %s |pigz -c >> %s'%(file_in,file_out)]
+    cmd = [seqtk + ' seq %s |pigz -p %s -c >> %s'%(file_in, args.threads, file_out)]
     run_subprocess(cmd,args,log)
 
     return in_files
@@ -497,6 +497,22 @@ def check_dependencies():
 
     return 0
 
+def clear_tmp(file_dict):
+    """clear tmp files"""
+    purge_list = []
+    for v in file_dict.keys():
+        for key,value in file_dict[v].items():
+            try:
+                if value.startswith('/tmp'):
+                    purge_list.append(value)
+            except AttributeError:
+                if type(value) == type([]):
+                    purge_list.append(value[0])
+    for item in purge_list:
+        print "removing %s" % item
+        os.remove(item)
+    return 0
+
 
 def main():
     "Main function loop"
@@ -526,7 +542,8 @@ def main():
     files = make_ref_from_uc(files,args)
     #step 8: Cluster consensus
     files = cluster_consensus(files,args)
-
+    # step 8: Clean tmp files
+    files = clear_tmp(files)
 
 if __name__ == '__main__':
     main()
