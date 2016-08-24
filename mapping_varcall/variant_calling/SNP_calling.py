@@ -15,6 +15,7 @@ def parse_args():
 
 def make_header(args,handle,line):
     """make vcf header for SNP output"""
+    #TODO: implement history samtools version / commands to generate VCF calls from watson and crick
     header = '\n'
     #TODO: define header properties
     with open(args.SNP_output,'w') as handle:
@@ -30,7 +31,7 @@ def combine_counts(observations, watson_ALT, crick_ALT, convert_dict, ref_base):
     crick_count = {}
     for combined_count,nt in zip(observations,'ACGT'):
         watson_count[nt], crick_count[nt] = [int(s) for s in combined_count.split(',')]
-    #prevent spurious low counts to interfere with SNP calling algorithm, discard observations.
+    #prevent spurious low counts to interfere with SNP calling algorithm, discard observations lower than 5%.
     for nt in 'ACGT':
         try:
             if watson_count[nt] / float(sum(watson_count.values())) < 0.05:
@@ -127,6 +128,8 @@ def combine_counts(observations, watson_ALT, crick_ALT, convert_dict, ref_base):
             alt_records.append('T')
         else:
             return {}
+    elif 'T' in alt_records_crick and 'T' not in alt_records_watson:
+        return {}
     if 'C' in alt_records_crick:
         # if C in alt_records_crick, T or C should be in REF or ALT records watson
         if 'T' in alt_records_watson or 'C' in alt_records_watson or ref_base in 'CT':
@@ -155,7 +158,7 @@ def combine_counts(observations, watson_ALT, crick_ALT, convert_dict, ref_base):
         watson_process = convert_dict['watson'][nt]
         crick_process = convert_dict['crick'][nt]
         if watson_process == 'NA' and crick_process == 'NU':
-            if watson_count[nt] == 0:
+            if crick_count[nt] == 0:
                 # allele is not found in crick
                 continue
             nt_counts[nt] += crick_count[nt]
@@ -298,12 +301,30 @@ def make_vcf_record(chrom, pos, ref_base, DP, ALT, counts, observations):
     # 2. VCF record SNP alleles are independent from methylation VCF records in terms of ALT records.
     #TODO: add strand evidence specification
     #TODO: add num-het, num-hom, number called, other custom fields
-    output = [chrom, pos, '.', ref_base, ','.join(ALT), '.', '.','DP=%s'%DP, 'GT:DP:ADW:ADC:RO:AO']
+    output = [chrom, pos, '.', ref_base, ','.join(ALT), '.', '.','DP=%s'%DP]
+    RO = sum([c[ref_base] for c in counts if c != {}])
+    output[-1] += ';RO=%s' % RO
+    output[-1] += ';AO=%s' % (DP - RO)
+    output.append('GT:DP:ADW:ADC:RO:AO')
+    ADW = 0
+    ADC = 0
+    GT_LIST = {'uncalled':0,'HET':0,'HOM_REF':0,'HOM_ALT':0}
+    ALT_FREQ = []
     for count,observation in zip(counts,observations):
         values = {'DP':sum(count.values())}
         values['ADW'] = ','.join([i.split(',')[0] for i in observation.split(':')])
         values['ADC'] = ','.join([i.split(',')[1] for i in observation.split(':')])
         values['GT'] = get_GT(count, ALT, ref_base)
+        if values['GT'][0] == values['GT'][2]:
+            if values['GT'][0] == '.':
+                GT_LIST['uncalled'] += 1
+            elif values['GT'][0] == '0':
+                GT_LIST['HOM_REF'] += 1
+            else:
+                GT_LIST['HOM_ALT'] += 1
+        else:
+            GT_LIST['HET'] += 1
+            ALT_FREQ.append((sum(count.values()) - count[ref_base]) / float(sum(count.values())))
         try:
             values['RO'] = '%s' % count[ref_base]
             for nt in ALT:
@@ -321,6 +342,15 @@ def make_vcf_record(chrom, pos, ref_base, DP, ALT, counts, observations):
             values['AO'] = '.'
         values['AO'] = ','.join(values['AO'])
         output.append('%(GT)s:%(DP)s:%(ADW)s:%(ADC)s:%(RO)s:%(AO)s'%values)
+    try:
+        output[7] += ';AB=%.2f' % (sum(ALT_FREQ) / float(len([v for v in ALT_FREQ if v != 0.0])))
+    except ZeroDivisionError:
+        output[7] += ';AB=0'
+    for k,v in GT_LIST.items():
+        output[7] += ';%s=%s'% (k,v)
+    #AC gets translated into allele count
+    #AF gets translated into allele frequency
+    #AN gets translated into total # of alleles.
     vcf_line = '\t'.join(output) + '\n'
     return vcf_line
 
@@ -331,7 +361,11 @@ def main():
     # make_header(args,handle,line)
     count = 0
     with open(args.SNP_output, 'w') as handle:
-        for line in os.popen("pigz -cd %s " % args.mergedcalls):
+        if args.mergedcalls.endswith('.gz'):
+            agent = 'pigz -cd '
+        else:
+            agent = 'cat '
+        for line in os.popen(agent + " %s" % args.mergedcalls):
             if not count:
                 make_header(args,handle,line)
             snp_record = call_SNP(line)
@@ -341,7 +375,7 @@ def main():
             if snp_record:
                 handle.write(snp_record)
     handle.close()
-    os.popen('bgzip %s' % args.SNP_output)
+    os.popen('bgzip -f %s' % args.SNP_output)
     os.popen('tabix -p vcf %s.gz' % args.SNP_output)
 
 
