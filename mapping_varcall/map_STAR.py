@@ -530,7 +530,10 @@ def main():
     #1 get command line arguments
     args = parse_args()
     # version = get_version()alignSoftClipAtReferenceEnds
-    log = open(args.log,'w')
+    if __name__ == "__main__":
+        log = open(args.log,'w')
+    else:
+        log = open(args.log, 'a')
     log.write("started run\n")
     #2 make reference genome fo STAR in appropriate directory
     args = index_STAR(args)
