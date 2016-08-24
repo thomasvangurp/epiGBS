@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env pypy
 __author__ = 'thomasvangurp'
 # Date created: 22/11/2014 (europe date)
 # Function: Pipeline for mapping reads to reference
@@ -12,7 +12,6 @@ import tempfile
 import os
 import shutil
 import sys
-import pysam
 from Bio import SeqIO
 from Bio import Restriction
 
@@ -66,23 +65,24 @@ def parse_args():
                         help='heatmap output methylation')
     args = parser.parse_args()
     if args.input_dir:
-        args.reads_R1 = os.path.join(args.input_dir,'Unassembled.R1.watson_trimmed.fq.gz')
-        args.reads_R2 = os.path.join(args.input_dir,'Unassembled.R2.crick_trimmed.fq.gz')
-        args.merged = os.path.join(args.input_dir,'Assembled.trimmed.fq.gz')
-        args.reference = os.path.join(args.input_dir,'cluster_consensus.renamed.fa')
+        args.reads_R1 = os.path.join(args.input_dir,'Unassembled.R1.watson.fq.gz')
+        args.reads_R2 = os.path.join(args.input_dir,'Unassembled.R2.crick.fq.gz')
+        args.merged = os.path.join(args.input_dir,'Assembled.fq.gz')
+        if args.reference == None:
+            args.reference = os.path.join(args.input_dir,'consensus_cluster.renamed.fa')
+        if args.barcodes == None:
+            args.barcodes = os.path.join(args.input_dir,'barcodes.csv')
     if args.output_dir:
         if not os.path.exists(args.output_dir):
             os.mkdir(args.output_dir)
         if not args.log:
             args.log = os.path.join(args.output_dir,'mapping_variantcalling.log')
-        args.watson_vcf = os.path.join(args.output_dir,'watson.vcf')
-        args.crick_vcf = os.path.join(args.output_dir,'crick.vcf')
-        args.snp_vcf = os.path.join(args.output_dir,'snp.vcf')
-        args.methylation_vcf = os.path.join(args.output_dir,'methylation.vcf')
+        args.watson_vcf = os.path.join(args.output_dir,'watson.vcf.gz')
+        args.crick_vcf = os.path.join(args.output_dir,'crick.vcf.gz')
+        args.snp_vcf = os.path.join(args.output_dir,'snp.vcf.gz')
+        args.methylation_vcf = os.path.join(args.output_dir,'methylation.vcf.gz')
         args.heatmap = os.path.join(args.output_dir,'heatmap.igv')
-        #2 bed files should be made for subsequent analysis using Rnbeads or other software
         args.mastermeth = os.path.join(args.output_dir,'methylation.bed')
-        args.mastersnp= os.path.join(args.output_dir,'snp.bed')
     return args
 
 def run_subprocess(cmd,args,log_message):
@@ -216,6 +216,22 @@ def run_bwameth(in_files,args):
     run_subprocess(cmd,args,log)
     return in_files
 
+def run_STAR(in_files, args):
+    "run bwa_meth for mapping"
+
+    in_files['bam_out'] = {}
+    in_files['bam_out']['watson'] = os.path.join(args.output_dir, 'watson.dedup.bam')
+    in_files['bam_out']['crick'] = os.path.join(args.output_dir, 'crick.dedup.bam')
+    in_files['header'] = os.path.join(args.output_dir, 'header.sam')
+    cmd = ["map_STAR.py",'--input_dir %s' % args.input_dir,
+           "--barcodes %s" % args.barcodes,
+           "--threads %s" % args.threads,
+           "--output_dir %s" % args.output_dir]
+
+    log = "Map reads using STAR"
+    run_subprocess(cmd, args, log)
+
+    return in_files
 
 def addRG(in_files,args):
     "make header for output bamfile and split in watson and crick"
@@ -507,7 +523,7 @@ def variant_calling_samtools(in_files,args):
 
     cmd = ["samtools mpileup --reference %s -gt DP,AD,INFO/AD" % (args.reference) +
            " --max-depth  10000000 " +  # call at max-depth of 10.000.000
-           "-q 0 " +  # Do not skip alignments with low mapQ #TODO: investigate option
+           "-q 0 " +  # Do not skip alignments with low mapQ
            "-Q 15 " +  # Skip bases with baseQ/BAQ smaller than 15
            "--skip-indels " +  # skip indels
            "-vu %s" % (
@@ -530,20 +546,52 @@ def variant_calling_samtools(in_files,args):
     run_subprocess(cmd, args, log)
     return in_files
 
+def merge_watson_crick(in_files, args):
+    """create merged.tsv.gz with watson and crick calls merged"""
+    if 'vcf_out' not in in_files:
+        in_files['vcf_out'] = {}
+        in_files['vcf_out']['watson'] = os.path.join(args.output_dir, 'watson.vcf.gz')
+        in_files['vcf_out']['crick'] = os.path.join(args.output_dir, 'crick.vcf.gz')
+    in_files['vcf_out']['merged'] = os.path.join(args.output_dir,'merged.tsv')
+    cmd = ["merge_watson_crick.py",
+           "-w %s" % in_files['vcf_out']['watson'],
+           "-c %s" % in_files['vcf_out']['crick'],
+           "-o %s" % in_files['vcf_out']['merged']]
+
+    log = "Create custom tsv file for combining watson and crick observation counts per individual"
+    run_subprocess(cmd, args, log)
+    in_files['vcf_out']['merged'] = os.path.join(args.output_dir, 'merged.tsv.gz')
+    return in_files
+
+def SNP_calling(in_files, args):
+    """run SNP calling"""
+    if 'vcf_out' not in in_files:
+        in_files['vcf_out'] = {}
+    in_files['vcf_out']['SNP'] = os.path.join(args.output_dir, 'snp.vcf')
+    in_files['vcf_out']['merged'] = os.path.join(args.output_dir, 'merged.tsv.gz')
+    cmd = ["SNP_calling.py",
+           "-m %s" % in_files['vcf_out']['merged'],
+           "-s %s" % in_files['vcf_out']['SNP']]
+    log = "perform SNP calling"
+    run_subprocess(cmd, args, log)
+
+    return in_files
 
 
 def methylation_calling(in_files,args):
     "run methylation calling script."
     log = ["Run methylation calling script"]
-    cmd = ["methylation_calling_samtools.py" +
-           " -r %s"%(args.reference) +
-           " -w %s"%(in_files['vcf_out']['watson']) +
-           " -c %s"%(in_files['vcf_out']['crick']) +
-           " -m %s"%(os.path.join(args.output_dir,'methylation.vcf')) +
-           " -s %s"%(os.path.join(args.output_dir,'snp.vcf')) +
-           " -heat %s"%(os.path.join(args.output_dir,'heatmap.igv')) +
-           " -methylation_called %s"%(os.path.join(args.output_dir,'methylation.bed')) +
-           " -snp_called %s"%(os.path.join(args.output_dir,"snp.bed")) ]
+    in_files['vcf_out']['SNP'] = os.path.join(args.output_dir, 'snp.vcf.gz')
+    in_files['vcf_out']['merged'] = os.path.join(args.output_dir, 'merged.tsv.gz')
+    cmd = ["methylation_calling.py",
+           " -r %s"%(args.reference),
+           " -m %s"%(in_files['vcf_out']['merged']),
+           " -s %s"%(in_files['vcf_out']['SNP']),
+           " -o %s"%(os.path.join(args.output_dir,'methylation.bed')),
+           " -heat %s"%(os.path.join(args.output_dir,'heatmap.igv'))
+           ]
+
+
     run_subprocess(cmd,args,log)
     return in_files
 
@@ -555,16 +603,13 @@ def main():
         os.remove(args.log)
     #Step 1: discover files in input #todo
     files = {}
-    #Step 2: map reads using bwameth
+    #Step 2: map reads using STAR
     #TODO: replace for running map_STAR
-    files = run_bwameth(files,args)
-    #Step 3: join the non overlapping PE reads from watson and crick using usearch
-    #TODO: PCR duplicate removal should work for reference genomes as well!
-    # files = remove_PCR_duplicates(files,args)
-    #Step 3a use seqtk to trim merged and joined reads from enzyme recognition site
+    files = run_STAR(files,args)
+
     files = variant_calling_samtools(files, args)
-    # files = run_Freebayes(files,args)
-    #Step 4: Dereplicate all watson and crick reads
+    files = merge_watson_crick(files,args)
+    files = SNP_calling(files, args)
     files = methylation_calling(files,args)
     print 'done'
 if __name__ == '__main__':
