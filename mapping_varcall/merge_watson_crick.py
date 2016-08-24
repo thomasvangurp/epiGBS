@@ -20,18 +20,18 @@ def merge_line(watson_line,crick_line):
     """merge watson and crick output"""
     out_line = watson_line[:2]
     out_line += [watson_line[3]]
-    out_line += [watson_line[4][:-4]]
-    out_line += [crick_line[4][:-4]]
-    if out_line[-2:] == ['','']:
+    out_line += [watson_line[4].replace('<*>','').rstrip(',')]
+    out_line += [crick_line[4].replace('<*>','').rstrip(',')]
+    if out_line[-2:] == ['',''] and out_line[2] in 'AT':
         return None
     out_line += ['']*len(watson_line[9:])
     AD_index = watson_line[8].split(':').index('AD')
-    watson_nt_index = watson_line[4][:-4].split(',')
-    crick_nt_index = crick_line[4][:-4].split(',')
+    watson_nt_index = out_line[3].split(',')
+    crick_nt_index = out_line[4].split(',')
     for nt in 'ACGT':
         nt_pos_watson = None
         nt_pos_crick = None
-        if nt == watson_line[3]:
+        if nt == out_line[2]:
             nt_pos_watson = 0
             nt_pos_crick = 0
         if nt in watson_nt_index:
@@ -81,25 +81,17 @@ def merge(args):
     while True:
         if read_watson:
             while True:
-                try:
-                    watson_line = watson_handle.next()[:-1].split('\t')
-                except StopIteration:
-                    watson_line = ['']
-                    break
+                watson_line = watson_handle.readline()[:-1].split('\t')
                 if 'INDEL' not in watson_line:
                     break
         if read_crick:
             while True:
-                try:
-                    crick_line = crick_handle.next()[:-1].split('\t')
-                except StopIteration:
-
-                    break
-                if crick_line == ['']:
-                    break
+                crick_line = crick_handle.readline()[:-1].split('\t')
                 if 'INDEL' not in crick_line:
                     break
-        if watson_line[0] == crick_line[0]:
+        if len(watson_line) < 2:
+            break
+        elif watson_line[0] == crick_line[0]:
             if watson_line[1] == crick_line[1]:
                 count += 1
                 if not count % 1000000:
@@ -117,8 +109,6 @@ def merge(args):
             else:
                 read_crick = False
                 read_watson = True
-        elif watson_line[0] == '' or crick_line[0] == '':
-            break
         elif int(watson_line[0]) > int(crick_line[0]):
             read_watson = False
             read_crick = True
@@ -126,7 +116,7 @@ def merge(args):
             read_crick = False
             read_watson = True
     output.close()
-    os.popen('pigz %s' % args.output)
+    os.popen('pigz -f %s' % args.output)
 def main():
     """Main function loop"""
     args = parse_args()
