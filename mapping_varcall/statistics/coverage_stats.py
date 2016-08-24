@@ -6,8 +6,8 @@ import os
 
 input_dir = sys.argv[1]
 
-watson_bam = pysam.AlignmentFile(os.path.join(input_dir,'watson.bam'),'rb')
-crick_bam  = pysam.AlignmentFile(os.path.join(input_dir,'crick.bam'),'rb')
+watson_bam = pysam.AlignmentFile(os.path.join(input_dir,'watson.reheader.bam'),'rb')
+crick_bam  = pysam.AlignmentFile(os.path.join(input_dir,'crick.reheader.bam'),'rb')
 
 coverage_dict = {'sample_coverage':{'watson':{},'crick':{}},'contig_coverage':{}}
 contig_list = [entry['SN'] for entry in watson_bam.header['SQ']]
