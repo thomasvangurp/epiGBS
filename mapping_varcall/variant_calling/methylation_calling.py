@@ -324,7 +324,7 @@ def main():
     args = parse_args()
     # make_header(args,handle,line)
     count = 0
-    enz_range = get_range(args)
+    # enz_range = get_range(args)
     reference_genome = SeqIO.to_dict(SeqIO.parse(args.reference, "fasta"))
     SNP_nearby = []
     igv_handle = open(args.heatmap_output,'w')
