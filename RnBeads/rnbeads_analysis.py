@@ -48,12 +48,12 @@ def main():
         check_file_formats.check_fasta(args.fasta)
         check_file_formats.check_bed(args.bed)
         check_file_formats.check_sample_file(args.sample_file)
-        # Prepare analysis files
-        if args.bed:
-            prepare_bed_analysis(args)
         # Coverts given .Fasta file to a 2bit file and writes it to the /tmp/ directory.
         twobit_file = fasta_to_2bit(args)
         tmp_files.append(twobit_file)
+        # Prepare analysis files
+        if args.bed:
+            prepare_bed_analysis(args)
         # Makes description file out of the species and genus information given by the argparse arguments and
         # writes it to the /tmp/ directory.
         description = make_rnbeads_description(twobit_file, args)
@@ -127,7 +127,10 @@ def run_subprocess(cmd, log_message):
     if stdout:
         sys.stdout.write('stdout:\n%s\n' % stdout)
     if stderr:
-        sys.stdout.write('stderr:\n%s\n' % stderr)
+        if 'Execution halted' in stderr or exit_code != 0:
+            raise Exception('R script returned error\n%s' % stderr)
+        else:
+            sys.stdout.write('stderr:\n%s\n' % stderr)
     sys.stdout.write('finished:\t%s\n\n' % log_message)
     if exit_code:
         return Exception("Call of %s failed with \n %s" % (cmd, stderr))
@@ -186,8 +189,8 @@ def prepare_bed_analysis(args):
         type = "CHG"
     else:
         type = "CG"
-
-    invalid_samples = prepare_analysis.IgvToRnBeads(input_file, output_dict, samples, output_dir, given_samples,
+    seq_handle = SeqIO.parse(open(args.fasta),'fasta')
+    invalid_samples = prepare_analysis.IgvToRnBeads(input_file,seq_handle, output_dict, samples, output_dir, given_samples,
                                                     args.minimal_reads, type)
 
     # If there are invalid samples (that have less than 5% of the reads of the maximum sample`s reads), Then
@@ -531,44 +534,63 @@ def make_rnbeads_description(twobit_file, args):
     return description
 
 
-def convert_fasta(args):
+def convert_fasta_bed(args):
     unconverted_fasta = SeqIO.parse(open(args.fasta), 'fasta')
+    unconverted_bed = open(args.bed,'r')
     output_fasta = os.path.join(args.temp_directory, "chg.fasta")
+    output_bed = os.path.join(args.temp_directory, "chg.bed")
+    output_bed_handle = open(output_bed,'w')
+    #write header to new bed file
+    output_bed_handle.write(unconverted_bed.readline())
     with open(output_fasta, "w") as converted_fasta:
         for record in unconverted_fasta:
             sequence = list(record.seq)
             converted_sequence = str()
-            # sequence = str(record.seq)
-            for i, nucleotide in enumerate(sequence):
-                converted_sequence += str(sequence[i])
-                seq_window = sequence[i:i+3]
-                if "C" in seq_window and "G" in seq_window:
-                    if len(seq_window) == 3:
-                        if seq_window[0:2] == ["C", "G"]:
-                            if seq_window[2] == "G":
-                                converted_sequence += "CG"
-                                del sequence[i]
-                                del sequence[+1]
-                            else:
-                                sequence.insert(i+1, "A")
-                        elif seq_window[0] == "C" and seq_window[2] == "G":
-                            del sequence[i+1]
-                    elif len(seq_window) == 2:
-                        if seq_window == ["C", "G"]:
-                            sequence.insert(i+1, "A")
-
-            record.seq = Seq.Seq(converted_sequence, generic_dna)
+            sequence = str(record.seq)
+            #initiate dictionary to keep track of new nucleotide positions
+            pos_convert = {}
+            count = 0
+            sequence = sequence.replace('CG','XY')
+            i = 0
+            while True:
+                if len(sequence[i:]) < 3:
+                    break
+                if sequence[i] in 'CX' and sequence[i+2] in 'GY':
+                    if sequence[i] != 'X':
+                        pos_convert[i + 1 ] = len(converted_sequence) + 1
+                    if sequence[i+2] != 'Y':
+                        pos_convert[i + 3] = len(converted_sequence) + 2
+                    count -= 1
+                    converted_sequence += 'CG'
+                    i += 3
+                else:
+                    converted_sequence += sequence[i]
+                    i+=1
+            while True:
+                pos = unconverted_bed.tell()
+                line = unconverted_bed.readline()
+                split_line = line.split('\t')
+                if split_line[0] == record.id:
+                    if int(split_line[1]) in pos_convert:
+                        split_line[1] = str(pos_convert[int(split_line[1])])
+                        output_bed_handle.write('\t'.join(split_line))
+                else:
+                    unconverted_bed.seek(pos)
+                    break
+            record.seq = Seq.Seq(converted_sequence.replace('XY','NN'), generic_dna)
             SeqIO.write(record, converted_fasta, "fasta")
-
-    return converted_fasta.name
-
+    output_bed_handle.close()
+    args.bed = output_bed
+    return output_fasta
 
 def fasta_to_2bit(args):
     """
     Coverts the given fasta to a .2bit file via the faToTwoBit executable.
     """
     if args.chg:
-        fasta = convert_fasta(args)
+        fasta = convert_fasta_bed(args)
+        #replace existing fasta in args for replaced version
+        args.fasta = fasta
     else:
         fasta = args.fasta
 

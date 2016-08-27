@@ -33,7 +33,7 @@ def ParseFiles(input, output):
     """
     input_file = open(input, 'r')
     output_file_dict = dict()
-    header = input_file.next()
+    header = input_file.readline()
     samples = header.split()[4:]
 
     # Iterates through the sample in the header.
@@ -44,7 +44,7 @@ def ParseFiles(input, output):
     return [input_file, output_file_dict, samples]
 
 
-def IgvToRnBeads(input_file, output_dict, samples, output, given_samples=None, min_reads=5, type="CG"):
+def IgvToRnBeads(input_file,ref, output_dict, samples, output, given_samples=None, min_reads=5, type="CG"):
     """
     Fills each sample.bed file with the methylation info that is obtained from the input .bed file.
     """
@@ -52,45 +52,64 @@ def IgvToRnBeads(input_file, output_dict, samples, output, given_samples=None, m
     chr_file = open(os.path.join(output, "chromosomes.txt"), "w")
     # Valid chromosome = chromosome with atleast 1 sample that has a coverage higher than 5 on it.
     valid_chromosomes = set()
-    for line in input_file:
+    chrom = ref.next()
+    while True:
+        line = input_file.readline()
+        if line == '':
+            break
         chr, pos, context = line.split()[:3]
-        if context == type:
+        while chrom.name != chr:
             try:
-                # Need info of next line because the context also, needs to be "CG".
-                next_line = input_file.next()
+                chrom = ref.next()
             except StopIteration:
-                pass
-            if next_line.split()[2] != type:  # Needs to be "CG" as well.
-                continue
-            else:
-                # None means actually that there is no read data but data with 0 reads
-                # but data with zero (0) won't be written to the .bed file's anyway.
-                normalised_line = line.replace('None', '0')
-                normalised_next_line = next_line.replace('None', '0')
-                values_C = normalised_line.split()[4:]
-                values_G = normalised_next_line.split()[4:]
-                for i in range(0, len(samples), 2):
-                    total = int(values_C[i+1])+int(values_G[i+1])
-                    # Needs to be more than the offset.
-                    if total <= int(min_reads):
-                        continue
-                    # Appends the chromosome list if a new valid chromosome is passed the total offset.
-                    if chr not in valid_chromosomes:
-                        valid_chromosomes.add(chr)
-                        chr_file.write("".join([chr.strip("chr"), "\n"]))
-                    sample = samples[i].strip('_methylated')
-                    sample_file = output_dict[sample]
-                    out_str = chr+"\t%s\t%s\t"%(int(pos)-1, int(pos)+1)
-                    sample_file.write(out_str)
-                    # Methylation in CG sites is determined for both watson and crick strand combined!
-                    methylated = int(values_C[i])+int(values_G[i])
-                    if total == 0:
-                        ratio = 0
-                    else:
-                        ratio = float(methylated)/total*1000
-                    strand = '+'
-                    # Sample file needs to be in EPP format: see RnBeads vignette for a more detailed description.
-                    sample_file.write("'"+str(methylated)+'/'+str(total)+"'"+'\t'+str("%.0f" % ratio)+'\t'+strand+'\n')
+                break
+        if chrom[int(pos)-1] == 'C':
+            strand = '+'
+        elif chrom[int(pos)-1] == 'G':
+            strand = '-'
+        else:
+            continue
+            #wrong nucleotide for ref, this cannot be corrected with Rnbeads, ignore for now
+        if context == type:
+            # try:
+            #     # Need info of next line because the context also, needs to be "CG".
+            #     current_pos = input_file.tell()
+            #     next_line = input_file.readline()
+            #     if next_line == '':
+            #         next_line = '\t'.join(['0'] * len(line.split('\t'))) + '\n'
+            # except StopIteration:
+            #     pass
+            # if int(next_line.split()[1]) != int(line.split()[1]) + 1 or next_line.split()[2] != type:
+            #     next_line = '\t'.join(['0'] * len(line.split('\t'))) + '\n'
+            #     input_file.seek(current_pos)
+            # # None means actually that there is no read data but data with 0 reads
+            # # but data with zero (0) won't be written to the .bed file's anyway.
+            normalised_line = line.replace('None', '0')
+            # normalised_next_line = next_line.replace('None', '0')
+            values = normalised_line.split()[4:]
+            # values_G = normalised_next_line.split()[4:]
+            for i in range(0, len(samples), 2):
+                total = int(values[i+1])
+                # Needs to be more than the offset.
+                if total <= int(min_reads):
+                    continue
+                # Appends the chromosome list if a new valid chromosome is passed the total offset.
+                if chr not in valid_chromosomes:
+                    valid_chromosomes.add(chr)
+                    chr_file.write("".join([chr.strip("chr"), "\n"]))
+                sample = samples[i].strip('_methylated')
+                sample_file = output_dict[sample]
+                out_str = chr+"\t%s\t%s\t"%(int(pos)-1, int(pos))
+                sample_file.write(out_str)
+                # Methylation in CG sites is determined for both watson and crick strand combined!
+                methylated = int(values[i])
+                if total == 0:
+                    ratio = 0
+                else:
+                    ratio = float(methylated)/total*1000
+                # strand = '+'
+                # Sample file needs to be in EPP format: see RnBeads vignette for a more detailed description.
+                sample_file.write("'"+str(methylated)+'/'+str(total)+"'"+'\t'+str("%.0f" % ratio)+'\t'+strand+'\n')
 
     # Closes all files in the dictionary.
     for file in output_dict.values():
