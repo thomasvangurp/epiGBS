@@ -99,9 +99,10 @@ def IgvToRnBeads(input_file,ref, output_dict, samples, output, given_samples=Non
                     chr_file.write("".join([chr.strip("chr"), "\n"]))
                 sample = samples[i].strip('_methylated')
                 sample_file = output_dict[sample]
-                out_str = chr+"\t%s\t%s\t"%(int(pos)-1, int(pos))
+                # if strand == '-':
+                #     pos = str(int(pos)-1)
+                out_str = chr+"\t%s\t%s\t"%(int(pos)-1, int(pos)-1)
                 sample_file.write(out_str)
-                # Methylation in CG sites is determined for both watson and crick strand combined!
                 methylated = int(values[i])
                 if total == 0:
                     ratio = 0
