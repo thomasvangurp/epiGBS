@@ -215,7 +215,7 @@ def run_analysis(args):
     Analysis function for the R RnBeads package. Prepares the template .R script run.analysis.
     After the analysis, the output folder will be zipped in a given directory.
     """
-    cur_time = time.strftime("%d_%m_%Y_%H:%M")
+    cur_time = time.strftime("%d_%m_%Y_%H_%M")
     if not args.script_dir:
         script_dir = os.path.dirname(os.path.realpath(__file__))
         script_dir = script_dir.replace(' ', '\ ')
