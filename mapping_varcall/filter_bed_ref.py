@@ -17,8 +17,42 @@ def parse_args():
     args = parser.parse_args()
     return args
 
+def check_context(cluster,position,ref,context):
+    """Check if context matches specified position"""
+    nt = ref[str(int(cluster))][int(position)-1]
+    if nt.upper() == 'C':
+        try:
+            up_2 = ref[str(int(cluster))][int(position):int(position)+2]
+            if up_2[0] == 'G':
+                actual_context = 'CG'
+            elif up_2[1] == 'G':
+                actual_context = 'CHG'
+            else:
+                actual_context = 'CHH'
+        except IndexError:
+            # TODO: replace by expected nucleotides from enz recognition site
+            return 0
+    elif nt.upper() == 'G':
+        try:
+            down_2 = ref[str(int(cluster))][int(position)-3:int(position)-1]
+            if down_2[1] == 'C':
+                actual_context = 'CG'
+            elif down_2[0] == 'C':
+                actual_context = 'CHG'
+            else:
+                actual_context = 'CHH'
+        except IndexError:
+            return 0
+    else:
+        print 'Not a C nucleotide!'
+        return 1
+    if actual_context != context:
+        # print "Context mismatch!"
+        return 1
+    else:
+        return 0
 
-def filter_bed(args):
+def filter_bed(args, ref_dict):
     """Filter bed file on percentage of sites being called and context"""
     bed_in_handle = open(args.bed,'r')
     bed_out_handle = open(args.bedout,'w')
@@ -31,6 +65,12 @@ def filter_bed(args):
     for line in bed_in_handle:
         split_line = line.split('\t')
         context = split_line[2]
+        cluster, position = split_line[:2]
+        cluster = float(cluster)
+        position = float(position)
+        if check_context(cluster, position, ref_dict, split_line[2]) != 0:
+            # print "Skipping cluster %s for position %s" % (cluster, position)
+            continue
         if context not in args.context:
             continue
         # samples_called = int(split_line[3])
@@ -63,7 +103,7 @@ def clean_fasta(fasta_input,fasta_output,seqs):
     for seq in fasta_input:
         name = 'chr%s'%seq.name
         if name in seqs:
-            out = '>%s\n%s\n'%(name,seq.seq.tostring().upper())
+            out = '>%s\n%s\n'%(name,str(seq.seq).upper())
             out_handle.write(out)
     out_handle.flush()
     out_handle.close()
@@ -73,7 +113,8 @@ def clean_fasta(fasta_input,fasta_output,seqs):
 def main():
     """main function loop"""
     args = parse_args()
-    chrom_out = filter_bed(args)
+    ref_dict = SeqIO.to_dict(SeqIO.parse(open(args.reference), 'fasta'))
+    chrom_out = filter_bed(args,ref_dict)
     clean_fasta(args.reference,args.refout,chrom_out)
 
 
