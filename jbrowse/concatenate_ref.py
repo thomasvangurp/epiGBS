@@ -5,10 +5,7 @@ import os
 import pysam
 from Bio import SeqIO
 from nested_dict import nested_dict
-try:
-    import xml.etree.cElementTree as ET
-except ImportError:
-    import xml.etree.ElementTree as ET
+
 
 def parse_args():
     """Pass command line arguments"""
@@ -35,7 +32,7 @@ def new_ref(coverage, args):
     currenct_seq = SeqIO.to_dict(SeqIO.parse(args.ref,'fasta'))
     #get genes
     gene_list  = []
-    ref_mapping = {'gene':{},'non-gene':{}}
+    ref_mapping = {'gene':{},'non_gene':{}}
     gene_ref = ''
     non_gene_ref = ''
     count = 0
@@ -60,10 +57,10 @@ def new_ref(coverage, args):
     with open(os.path.join(args.output_dir,'ref.fa'),'w') as refout:
         if gene_ref != '':
             refout.write('>%s\n%s\n' % ('gene', gene_ref))
-        refout.write('>%s\n%s' % ('other', non_gene_ref))
+        refout.write('>%s\n%s' % ('non_gene', non_gene_ref))
     #store length of sequences of ref for genes and non-genes
     ref_mapping['gene']['length'] = len(gene_ref)
-    ref_mapping['non-gene']['length'] = len(non_gene_ref)
+    ref_mapping['non_gene']['length'] = len(non_gene_ref)
     return ref_mapping
 
 def make_bed(ref_mapping,args):
@@ -78,11 +75,6 @@ def make_bed(ref_mapping,args):
             bed_out_handle.write('\t'.join(output)+'\n')
     return 0
 
-def make_gff3_genes(ref_mapping, args):
-    """make gff3 output of blast hits for jbrowse display"""
-    tree = ET.ElementTree(file=args.genes)
-    for child_of_root in tree:
-        print child_of_root.tag, child_of_root.attrib
 
 def parse_bam(mapping_dict, args):
     """parse bam file to get mapping per contig and individual"""
@@ -156,17 +148,13 @@ def rewrite_bam(ref_mapping,args):
     #create new template
     header = bam_watson_handle.header
     header['SQ']=[{'LN':ref_mapping['gene']['length'],'SN':'gene'},
-                  {'LN':ref_mapping['non-gene']['length'],'SN':'other'}]
+                  {'LN':ref_mapping['non_gene']['length'],'SN':'non_gene'}]
     contig_index = {'gene':0,'non_gene':1}
     for item in bam_watson_handle.header['RG']:
         watson_path = os.path.join(args.output_dir, '%s.watson.tmp' % item['SM'])
         crick_path = os.path.join(args.output_dir, '%s.crick.tmp' % item['SM'])
         watson_handle = pysam.AlignmentFile(watson_path, "wb", header=header)
         crick_handle = pysam.AlignmentFile(crick_path, "wb", header=header)
-        # watson_handle.close()
-        # crick_handle.close()
-        # watson_handle = open(watson_path,'w')
-        # crick_handle = open(crick_path,'w')
         out_handles[item['SM']] = {'watson': watson_handle, 'crick': crick_handle}
     i = 0
     print 'start splitting Watson reads'
@@ -189,18 +177,6 @@ def rewrite_bam(ref_mapping,args):
             if read.is_proper_pair:
                 read.pnext += contig_pos
         handle.write(read)
-        continue
-        # # print read
-        # read_str = str(read).split('\t')
-        # q_scores = read.qual
-        # read_str[10] = q_scores
-        # read_out = '\t'.join(read_str[:11])
-        # for tag in read.tags:
-        #     try:
-        #         read_out += '\t' + tag[0] + ':Z:' + tag[1]
-        #     except TypeError:
-        #         read_out += '\t' + tag[0] + ':I:' + str(tag[1])
-        # handle.write(read_out + '\n')
     for subdict in out_handles.values():
         subdict['watson'].close()
     i = 0
@@ -224,29 +200,26 @@ def rewrite_bam(ref_mapping,args):
             if read.is_proper_pair:
                 read.pnext += contig_pos
         handle.write(read)
-        continue
-        # read_str = str(read).split('\t')
-        # q_scores = read.qual
-        # read_str[10] = q_scores
-        # read_out = '\t'.join(read_str[:11])
-        # for tag in read.tags:
-        #     try:
-        #         read_out += '\t' + tag[0] + ':Z:' + tag[1]
-        #     except TypeError:
-        #         read_out += '\t' + tag[0] + ':I:' + str(tag[1])
-        # handle.write(read_out + '\n')
     for subdict in out_handles.values():
         subdict['crick'].close()
+    if not os.path.exists(os.path.join(args.output_dir,'bam')):
+        os.mkdir(os.path.join(args.output_dir,'bam'))
     for item in bam_watson_handle.header['RG']:
         watson_tmp = os.path.join(args.output_dir, '%s.watson.tmp' % item['SM'])
+        watson_tmp2 = os.path.join(args.output_dir, '%s.watson.tmp2' % item['SM'])
         watson_path = os.path.join(args.output_dir,'bam', '%s.watson.bam' % item['SM'])
         crick_tmp = os.path.join(args.output_dir, '%s.crick.tmp' % item['SM'])
+        crick_tmp2 = os.path.join(args.output_dir, '%s.crick.tmp2' % item['SM'])
         crick_path = os.path.join(args.output_dir,'bam', '%s.crick.bam' % item['SM'])
-        pysam.sort(watson_tmp,'-o', watson_path)
-        pysam.sort(crick_tmp,'-o', crick_path)
+        pysam.sort(watson_tmp,'-o', watson_tmp2)
+        pysam.sort(crick_tmp,'-o', crick_tmp2)
+        os.system('samtools calmd -b  %s %s > %s 2>/dev/null'
+                  % (watson_tmp2, os.path.join(args.output_dir,'ref.fa'), watson_path))
+        os.system('samtools calmd -b  %s %s > %s 2>/dev/null'
+                  % (crick_tmp2, os.path.join(args.output_dir,'ref.fa'), crick_path))
         pysam.index(watson_path)
         pysam.index(crick_path)
-    os.system('rm %s/*.tmp'%(args.output_dir))
+    os.system('rm %s/*.tmp*'%(args.output_dir))
 
 
 def main():
@@ -259,7 +232,6 @@ def main():
     ref_mapping = new_ref(coverage, args)
     #make bed file with positions of contigs
     make_bed(ref_mapping,args)
-    #make_gff3_genes(ref_mapping, args)
     rewrite_bam(ref_mapping, args)
     return 0
 
