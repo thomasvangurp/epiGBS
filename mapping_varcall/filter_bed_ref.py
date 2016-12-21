@@ -19,10 +19,11 @@ def parse_args():
 
 def check_context(cluster,position,ref,context):
     """Check if context matches specified position"""
-    nt = ref[str(int(cluster))][int(position)-1]
-    if nt.upper() == 'C':
+    nt = ref[str(int(cluster))].upper()[int(position)-1]
+    assert nt in 'NACGT'
+    if nt == 'C':
         try:
-            up_2 = ref[str(int(cluster))][int(position):int(position)+2]
+            up_2 = ref[str(int(cluster))].upper()[int(position):int(position)+2]
             if up_2[0] == 'G':
                 actual_context = 'CG'
             elif up_2[1] == 'G':
@@ -32,9 +33,9 @@ def check_context(cluster,position,ref,context):
         except IndexError:
             # TODO: replace by expected nucleotides from enz recognition site
             return 0
-    elif nt.upper() == 'G':
+    elif nt == 'G':
         try:
-            down_2 = ref[str(int(cluster))][int(position)-3:int(position)-1]
+            down_2 = ref[str(int(cluster))].upper()[int(position)-3:int(position)-1]
             if down_2[1] == 'C':
                 actual_context = 'CG'
             elif down_2[0] == 'C':
