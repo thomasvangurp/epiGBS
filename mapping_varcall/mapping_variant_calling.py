@@ -41,11 +41,11 @@ def parse_args():
                         help='merged watson and crick fastq')
     parser.add_argument('--reference',
                     help='reference clusters')
-    parser.add_argument('--barcodes',
+    parser.add_argument('-b','--barcodes',
                     help='Barcodes used in output')
     parser.add_argument('--species',
                         help='Species: if selected only that species will be putin BAM RG header')
-    parser.add_argument('-b','--bamout',
+    parser.add_argument('--bamout',
                         help='output for bam file with RGs')
     parser.add_argument('--threads',
                         help='Number of threads to used where multithreading is possible')
@@ -227,7 +227,8 @@ def run_STAR(in_files, args):
            "--barcodes %s" % args.barcodes,
            "--threads %s" % args.threads,
            "--output_dir %s" % args.output_dir]
-
+    if args.sequences != None:
+        cmd += ['--sequences %s' % args.sequences]
     log = "Map reads using STAR"
     run_subprocess(cmd, args, log)
 
