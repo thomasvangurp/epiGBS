@@ -89,7 +89,7 @@ def merge(args):
                 crick_line = crick_handle.readline()[:-1].split('\t')
                 if 'INDEL' not in crick_line:
                     break
-        if len(watson_line) < 2:
+        if len(watson_line) < 2 or len(crick_line) < 2:
             break
         elif watson_line[0] == crick_line[0]:
             if watson_line[1] == crick_line[1]:
