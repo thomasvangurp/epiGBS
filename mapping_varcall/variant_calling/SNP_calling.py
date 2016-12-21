@@ -1,29 +1,45 @@
 #!/usr/bin/env pypy
 import argparse
 import os
+import gzip
 
 def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description='Process input files')
     parser.add_argument('-m', '--mergedcalls', type=str, default=None,
                         help='Merged watson and crick calls')
+    parser.add_argument('-w', '--watson', type=str, default='watson.vcf.gz',
+                        help='watson vcf for header')
     parser.add_argument('-s', '--SNP_output', type=str, nargs='?', default=None,
                         help='SNP vcf file output name')
     args = parser.parse_args()
     return args
 
 
-def make_header(args,handle,line):
+def make_header(args,handle):
     """make vcf header for SNP output"""
-    #TODO: implement history samtools version / commands to generate VCF calls from watson and crick
-    header = '\n'
-    #TODO: define header properties
-    with open(args.SNP_output,'w') as handle:
-        handle.write(header)
-    return 0
+    # #TODO: implement history samtools version / commands to generate VCF calls from watson and crick
+    # header = '\n'
+    # #TODO: define header properties
+    # with open(args.SNP_output,'w') as handle:
+    #     handle.write(header)
+    # return 0
+    try:
+        assert os.path.exists(args.watson)
+    except AssertionError:
+        raise OSError('file %s does not exist, please provide the location of the watson.vcf.gz file')
+    if args.watson.endswith('gz'):
+        watson_handle = gzip.open(args.watson)
+    else:
+        watson_handle = open(args.watson)
+    for line in watson_handle:
+        if not line.startswith('#'):
+            return 0
+        else:
+            handle.write(line)
 
 
-def combine_counts(observations, watson_ALT, crick_ALT, convert_dict, ref_base):
+def combine_counts(observations, convert_dict, ref_base):
     """Combine SNP calls into one record taking into account expected bisulfite conversions"""
     #observations is a list of observations separated by ":"
     # Watson_A,Crick_A:Watson_C,Crick_C:Watson_T,Crick_T:Watson_G,Crick_G
@@ -44,6 +60,13 @@ def combine_counts(observations, watson_ALT, crick_ALT, convert_dict, ref_base):
         except ZeroDivisionError:
             pass
     # determine on which sample we should base output record
+    #implement a rule like if crick_C = 0 ; watson_T == > watson_C and if watson = 0 crick_A ==> crick_G
+    if crick_count['T'] == 0 and crick_count['C'] != 0:
+        watson_count['C'] += watson_count['T']
+        watson_count['T'] = 0
+    if watson_count['A'] == 0 and watson_count['G'] != 0:
+        crick_count['G'] += crick_count['A']
+        crick_count['A'] = 0
     nt_counts = {'C': 0, 'T': 0, 'G': 0, 'A': 0}
     alt_records_watson, alt_records_crick = ([], [])
     alt_records_watson += [str(nt) for nt, count in watson_count.items() if count != 0 and nt != ref_base]
@@ -96,7 +119,7 @@ def combine_counts(observations, watson_ALT, crick_ALT, convert_dict, ref_base):
         # Add Crick record reference observations as these are never disputed.
         nt_counts['T'] += crick_count['T']
         # Have very stringent conditions on absence for taking implied alleles into account
-        if 'C' not in alt_records_crick and 'C' not in watson_ALT:
+        if 'C' not in alt_records_crick and 'C' not in alt_records_watson:
             # if there is no C allele called on the crick allele than All T observations are legit
             if crick_count['T'] > 0 and watson_count['T'] > 0:
                 nt_counts['T'] += watson_count['T']
@@ -107,7 +130,7 @@ def combine_counts(observations, watson_ALT, crick_ALT, convert_dict, ref_base):
     alt_records = []
     if 'A' in alt_records_crick:
         # if A in alt_records_crick A or G must be in alt_records_watson
-        if 'G' in alt_records_watson and 'A' not in alt_records_watson:
+        if ('G' in alt_records_watson or ref_base == 'G') and 'A' not in alt_records_watson:
             # DO not add A as alt observation as it is a converted G
             pass
         elif 'A' in alt_records_watson or ref_base in 'GA':
@@ -120,7 +143,7 @@ def combine_counts(observations, watson_ALT, crick_ALT, convert_dict, ref_base):
         # A was not seen in alt_record watson whereas it should have been. invalidate call
         return {}
     if 'T' in alt_records_watson:
-        if 'C' in alt_records_crick and 'T' not in alt_records_crick:
+        if ('C' in alt_records_crick or ref_base == 'C') and 'T' not in alt_records_crick:
             # DO not add T as alt observation as it can only be a converted C
             pass
         # if T in alt_records_watson C or T must be in alt_record_crick
@@ -176,6 +199,8 @@ def combine_counts(observations, watson_ALT, crick_ALT, convert_dict, ref_base):
                 nt_counts[nt] += watson_count[nt]
                 nt_counts[nt] += crick_count[nt]
                 continue
+            else:
+                nt_counts[nt] += crick_count[nt]
         elif crick_process.startswith('NO'):
             no, nt_not, strand = crick_process.split('_')
             assert strand == 'watson'
@@ -183,6 +208,8 @@ def combine_counts(observations, watson_ALT, crick_ALT, convert_dict, ref_base):
                 nt_counts[nt] += watson_count[nt]
                 nt_counts[nt] += crick_count[nt]
                 continue
+            else:
+                nt_counts[nt] += watson_count[nt]
         elif crick_process.startswith('ADD') and watson_process == 'NU':
             add, nt_search, no, nt_not, strand = crick_process.split('_')
             assert strand == 'watson'
@@ -208,16 +235,17 @@ def combine_counts(observations, watson_ALT, crick_ALT, convert_dict, ref_base):
         else:
             print ''
     nt_out = {}
-    DP = float(sum(nt_counts.values()))
+    # DP = float(sum(nt_counts.values()))
     for nt, count in nt_counts.items():
-        try:
-            # TODO: set to parsable parameter
-            if count / DP > 0.05 and count > 0:
-                nt_out[nt] = count
-            else:
-                nt_out[nt] = 0
-        except ZeroDivisionError:
-            continue
+        nt_out[nt] = count
+        # try:
+        #     # TODO: set to parsable parameter
+        #     if count / DP > 0.05 and count > 0:
+        #         nt_out[nt] = count
+        #     else:
+        #         nt_out[nt] = 0
+        # except ZeroDivisionError:
+        #     continue
     return nt_out
 
 
@@ -255,7 +283,7 @@ def call_SNP(line):
         ALT = {}
         for observations in split_line[5:]:
             observations = observations.split(':')
-            count = combine_counts(observations, watson_ALT, crick_ALT , convert_dict, ref_base)
+            count = combine_counts(observations, convert_dict, ref_base)
             for nt,value in count.items():
                 if value == 0 or nt == ref_base:
                     continue
@@ -284,14 +312,18 @@ def get_GT(count,ALT,ref_base):
     order = sorted(nt_count.items(), key=lambda x: x[1])[::-1][:2]
     gt = []
     for (nt,count) in order:
+        if count == 0:
+            continue
         if count / float(sum(nt_count.values())) < 0.05:
             continue
         if nt == ref_base:
             gt.append('0')
         else:
             gt.append('%s' % (ALT.index(nt) + 1))
-    if len(gt) == 1:
+    if len(gt) == 1 and gt != []:
         gt = gt * 2
+    if gt == []:
+        return './.'
     return "/".join(gt)
 
 def make_vcf_record(chrom, pos, ref_base, DP, ALT, counts, observations):
@@ -361,13 +393,12 @@ def main():
     # make_header(args,handle,line)
     count = 0
     with open(args.SNP_output, 'w') as handle:
+        make_header(args,handle)
         if args.mergedcalls.endswith('.gz'):
             agent = 'pigz -cd '
         else:
             agent = 'cat '
         for line in os.popen(agent + " %s" % args.mergedcalls):
-            if not count:
-                make_header(args,handle,line)
             snp_record = call_SNP(line)
             count += 1
             if not count % 1000000:
