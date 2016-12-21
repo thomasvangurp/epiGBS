@@ -1,7 +1,7 @@
 import vcf
 import argparse
 import os
-"""split watson and crick bam file into sample specific bam files"""
+"""split watson and crick vcf file into sample specific bam files"""
 
 
 def parse_args():
