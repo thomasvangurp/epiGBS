@@ -78,7 +78,7 @@ def parse_options():
                       default = 1 ,  dest = "delete",
                       help = "Remove the barcode from the sequence, default is TRUE")
     parser.add_option("--control-nt", action="store_true",
-                      default=0, dest="control_nucleotide",
+                      default=1, dest="control_nucleotide",
                       help="implement barcode design with control nucleotide")
     return parser
     
