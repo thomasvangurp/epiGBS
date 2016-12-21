@@ -48,7 +48,7 @@ def check_context(cluster,position,ref,context):
     nt = ref[str(cluster)][int(position)]
     if nt.upper() == 'C':
         try:
-            up_2 = ref[cluster][int(position):int(position)+2]
+            up_2 = ref[cluster][int(position)+1:int(position)+3]
             if up_2[0] == 'G':
                 actual_context = 'CG'
             elif up_2[1] == 'G':
@@ -60,7 +60,7 @@ def check_context(cluster,position,ref,context):
             return 0
     elif nt.upper() == 'G':
         try:
-            down_2 = ref[cluster][int(position)-3:int(position)-1]
+            down_2 = ref[cluster][int(position)-2:int(position)]
             if down_2[1] == 'C':
                 actual_context = 'CG'
             elif down_2[0] == 'C':
@@ -103,11 +103,12 @@ def make_bed_graph(mapping_dict, groups, args):
             if not count%1000000:
                 print '%s lines processes' % count
             split_line = line.rstrip('\n').split('\t')
+            pos_in_contig = split_line[1]
             context = split_line[2]
-            cluster, position = split_line[:2]
-            concat_contig, position = mapping_dict[cluster.replace('chr', '')]
-            position = str(int(position) + int(position) - 1)
-            if check_context(concat_contig, position, ref, context) != 0:
+            concat_contig, start_contig = mapping_dict[split_line[0].replace('chr', '')]
+            final_position = str(int(start_contig) + int(pos_in_contig) - 1)
+            nt = str(ref[concat_contig].seq)[int(final_position)]
+            if check_context(concat_contig, final_position, ref, context) != 0:
                 # print "Skipping cluster %s for position %s" % (cluster, position)
                 continue
             meth_dict = {}
@@ -128,7 +129,6 @@ def make_bed_graph(mapping_dict, groups, args):
                     meth_dict['%s_%s' % (category, value)] = meth_ratio
             # concat_contig,position = mapping_dict[split_line[0].replace('chr','')]
             # position = str(int(position) + int(split_line[1]) - 1)
-            nt = str(ref[concat_contig].seq)[int(position)]
             context = split_line[2]
             for key,value in meth_dict.items():
                 if not value:
@@ -136,7 +136,7 @@ def make_bed_graph(mapping_dict, groups, args):
                 if nt == 'G':
                     value *= -1
                 handle = file_handles['%s_%s' % (key,context)]
-                out = [concat_contig,position,str(int(position)+1),'%.4f'%value]
+                out = [concat_contig,final_position,str(int(final_position)+1),'%.4f'%value]
                 handle.write('\t'.join(out) + '\n')
         for name,handle in file_handles.items():
             handle.close
