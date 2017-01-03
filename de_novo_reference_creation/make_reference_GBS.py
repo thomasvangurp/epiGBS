@@ -98,8 +98,7 @@ def run_subprocess(cmd,args,log_message):
     return 0
 
 def merge_reads(args):
-    "Unzip / Merge Watson and crick reads using pear"
-    #TODO: run only once for both watson and crick at same time
+    "Merged reads using PEAR"
     out_files = {}
     if args.sequences:
         head = '|head -n %s'%(int(args.sequences)*4)
@@ -124,7 +123,8 @@ def merge_reads(args):
     #specify output
     cmd+=['-o','%s/merged'%args.outputdir]
     log = "run pear for merging reads"
-    run_subprocess(cmd,args,log)
+
+    # run_subprocess(cmd,args,log)
     #Delete input files and output file name that are no longer needed??
     #append output files as dictionary
     out_files = {'merged':'%smerged'%args.outputdir + ".assembled.fastq",
@@ -192,107 +192,106 @@ def join_fastq(r1,r2,outfile,args):
         max_len_R1 = 200
         max_len_R2 = 200
     #Trim the reads up to the min expected length to improve de novo reference creation for joined reads
-    cmd = ["paste <(pigz -p %s -cd %s |seqtk seq -A - | cut -c1-%s) " % (args.threads, r1, max_len_R1) +
-           "<(pigz -p %s -cd %s |seqtk seq -A -|cut -c1-%s)|cut -f1-5" % (args.threads, r2, max_len_R2)+
+    cmd = ["paste <(seqtk seq -A %s | cut -c1-%s) " % (r1, max_len_R1) +
+           "<(seqtk seq -A %s |cut -c1-%s)|cut -f1-5" % (r2, max_len_R2)+
            "|sed '/^>/!s/\t/NNNNNNNN/g' |pigz -p %s -c > %s" % (args.threads, outfile)]
-    log = "Combine joined fastq file"
-    run_subprocess(cmd,args,log)
+    log = "Combine joined fastq file into single fasta file"
+    if not os.path.exists(outfile):
+        run_subprocess(cmd,args,log)
     return True
 
-def join_non_overlapping(in_files,args):
+def join_non_overlapping(in_files,mapping_dict, args):
     """join non overlapping PE reads"""
-    out_file = in_files['joined']
-    join_fastq(in_files[strand]['single_R1_demethylated'],in_files[strand]['single_R2_demethylated'],out_file,args)
-    #store output files in dictionary
-    out_name = 'demethylated_joined'
-    in_files[strand][out_name] = out_file
+    for key in mapping_dict:
+        key = key.replace(' ','_')
+        if 'mono' not in key:
+            continue
+        left = os.path.join(args.outputdir, '%s.R1.fq.gz' % key)
+        right = os.path.join(args.outputdir, '%s.R2.fq.gz' % key)
+        joined = os.path.join(args.outputdir, '%s.joined.fq.gz' % key)
+        if not os.path.exists(joined):
+            join_fastq(left, right, joined, args)
     return in_files
 
+def get_mapping_dict(args):
+    """get mapping dict for mono's"""
+    mapping_dict = {}
+    with open(args.barcodes) as barcode_handle:
+        header = barcode_handle.readline()[:-1].split('\t')
+        for line in barcode_handle:
+            split_line = line[:-1].split('\t')
+            try:
+                id = split_line[header.index('Sample')]
+            except KeyError:
+                raise KeyError('barcode file does not contain Sample, please revise your file %s' % args.barcodes)
+            mapping_dict[id] = {}
+            for k, v in zip(header, split_line):
+                if k != 'Sample':
+                    mapping_dict[id][k] = v
+    return mapping_dict
 
-
-def trim_and_zip(in_files,args):
-    """Trim fastq files and return using pigz"""
+def trim_split_and_zip(in_files, mapping_dict, args):
+    """Trim , split and zip fastq files for mono species"""
     in_files['trimmed'] = {}
 
-    log = 'Zip single watson reads: '
-    file_in = in_files['watson']['single_R1']
-    if args.outputdir:
-        file_out = os.path.join(args.outputdir, 'Unassembled.R1.watson.fq.gz')
-    else:
-        file_out = '_'.join(args.watson_forward.split('_')[:-1])+'.Unassembled.watson.R1.fq.gz'
-    in_files['trimmed']['watson_R1'] = file_out
-    cmd = [seqtk + ' seq %s |pigz -p %s -c > %s'%(file_in, args.threads, file_out)]
-    run_subprocess(cmd,args,log)
+    log = 'Zip and split forward reads'
+    file_in = in_files['single_R1']
+    cmd = seqtk + ' seq %s |tee >(pigz -c > %s)' % (file_in, os.path.join(args.outputdir,'all.R1.fq.gz'))
+    mono_list = [k for k in mapping_dict.keys() if 'mono' in k.lower()]
+    for k in mono_list[:-1]:
+        cmd += "|tee >(grep '%s' -A 3|sed '/^--$/d' |pigz -c > %s)" % (k, os.path.join(args.outputdir,'%s.R1.fq.gz'%(k.replace(' ','_'))))
+    #add the latest key to mono 1.
+    k = mono_list[-1]
+    cmd += "|grep '%s' -A 3|sed '/^--$/d' |pigz -c > %s" % (k, os.path.join(args.outputdir,'%s.R1.fq.gz'%k.replace(' ','_')))
+    if not os.path.exists(os.path.join(args.outputdir,'all.R1.fq.gz')):
+        run_subprocess([cmd],args,log)
 
-    log = 'Process single watson reads: reverse complement required for R2 '
-    file_in = in_files['watson']['single_R2']
-    if args.outputdir:
-        file_out = os.path.join(args.outputdir, 'Unassembled.R2.crick.fq.gz')
-    else:
-        file_out = '_'.join(args.watson_reverse.split('_')[:-1])+'.Unassembled.watson.R2.fq.gz'
-    in_files['trimmed']['watson_R2'] = file_out
-    #Take reverse complement as pear outputs R2 in reverse complement
-    cmd = [seqtk + ' seq -r %s |pigz -p %s -c > %s'%(file_in, args.threads, file_out)]
-    run_subprocess(cmd,args,log)
-
-    log = 'Process single crick reads: no trimming required for R1'
-    file_in = in_files['crick']['single_R1']
-    if args.outputdir:
-        file_out = os.path.join(args.outputdir, 'Unassembled.R1.watson.fq.gz')
-    else:
-        file_out = '_'.join(args.crick_forward.split('_')[:-1])+'.Unassembled.crick.R1.fq.gz'
-    in_files['trimmed']['crick_R1'] = file_out
-    cmd = [seqtk + ' seq %s |pigz -p %s -c >> %s'%(file_in, args.threads, file_out)]
-    run_subprocess(cmd,args,log)
-
-    log = 'Process single crick reads: reverse complement for R2'
-    file_in = in_files['crick']['single_R2']
-    if args.outputdir:
-        file_out = os.path.join(args.outputdir, 'Unassembled.R2.crick.fq.gz')
-    else:
-        file_out = '_'.join(args.crick_reverse.split('_')[:-1])+'.Unassembled.crick.R2.fq.gz'
-    in_files['trimmed']['crick_R2'] = file_out
-    #Take reverse complement as pear outputs R2 in reverse complement
-    cmd = [seqtk + ' seq -r %s |pigz -p %s -c >> %s'%(file_in, args.threads, file_out)]
-    run_subprocess(cmd,args,log)
+    log = 'Zip and split reverse reads'
+    file_in = in_files['single_R2']
+    cmd = seqtk + ' seq %s |tee >(pigz -c > %s)' % (file_in, os.path.join(args.outputdir, 'all.R2.fq.gz'))
+    mono_list = [k for k in mapping_dict.keys() if 'mono' in k.lower()]
+    for k in mono_list[:-1]:
+        cmd += "|tee >(grep '%s' -A 3|sed '/^--$/d' |pigz -c > %s)" % (
+        k, os.path.join(args.outputdir, '%s.R2.fq.gz' % (k.replace(' ', '_'))))
+    # add the latest key to mono 1.
+    k = mono_list[-1]
+    cmd += "|grep '%s' -A 3|sed '/^--$/d' |pigz -c > %s" % (
+    k, os.path.join(args.outputdir, '%s.R2.fq.gz' % k.replace(' ', '_')))
+    if not os.path.exists(os.path.join(args.outputdir, 'all.R2.fq.gz')):
+        run_subprocess([cmd], args, log)
 
     #Process merged files
-    log = 'Process merged watson reads:'
-    file_in = in_files['watson']['merged']
-    if args.outputdir:
-        file_out = os.path.join(args.outputdir, 'Assembled.fq.gz')
-    else:
-        file_out = '_'.join(args.watson_forward.split('_')[:-1])+'.Assembled.R1.fq.gz'
-    in_files['trimmed']['watson_merged'] = file_out
-    cmd = [seqtk + ' seq %s |pigz -p %s -c > %s'%(file_in, args.threads, file_out)]
-    run_subprocess(cmd,args,log)
-
-    log = 'Process merged crick reads:'
-    file_in = in_files['crick']['merged']
-    if args.outputdir:
-        file_out = os.path.join(args.outputdir, 'Assembled.fq.gz')
-    else:
-        file_out = '_'.join(args.crick_forward.split('_')[:-1])+'.Assembled.fq.gz'
-    in_files['trimmed']['crick_merged'] = file_out
-    cmd = [seqtk + ' seq %s |pigz -p %s -c >> %s'%(file_in, args.threads, file_out)]
-    run_subprocess(cmd,args,log)
+    log = 'Zip and split merged reads'
+    file_in = in_files['merged']
+    cmd = seqtk + ' seq %s |tee >(pigz -c > %s)' % (file_in, os.path.join(args.outputdir, 'all.merged.fq.gz'))
+    mono_list = [k for k in mapping_dict.keys() if 'mono' in k.lower()]
+    for k in mono_list[:-1]:
+        cmd += "|tee >(grep '%s' -A 3|sed '/^--$/d' |pigz -c > %s)" % (
+        k, os.path.join(args.outputdir, '%s.merged.fq.gz' % (k.replace(' ', '_'))))
+    # add the latest key to mono 1.
+    k = mono_list[-1]
+    cmd += "|grep '%s' -A 3|sed '/^--$/d' |pigz -c > %s" % (
+    k, os.path.join(args.outputdir, '%s.merged.fq.gz' % k.replace(' ', '_')))
+    if not os.path.exists(os.path.join(args.outputdir, 'all.merged.fq.gz')):
+        run_subprocess([cmd], args, log)
 
     return in_files
 
 
 
-def dereplicate_reads(in_files,args):
+def dereplicate_reads(in_files, mapping_dict, args):
     """dereplicate reads using vsearch"""
-    for strand in ['watson','crick']:
-        for name in ["demethylated_joined","merged_demethylated"]:
-            file_in = in_files[strand][name]
-            file_out = '.'.join(file_in.split('.')[:-2]) + '.derep.' + file_in.split('.')[-2]
-            in_files[strand][name] = [file_in]
+    in_files['derep'] = {}
+    for type in ['joined','merged']:
+        for name in [k for k in mapping_dict.keys() if 'mono' in k]:
+            name = name.replace(' ','_')
+            file_in = os.path.join(args.outputdir, '%s.%s.fq.gz' % (name, type))
+            file_out = '.'.join(file_in.split('.')[:-2]) + '.derep.fa'
             cmd = [vsearch +' -derep_fulllength %s -sizeout -minuniquesize 2 -output %s'%(file_in,file_out)]
-            log = "Dereplicate full_length of %s using vsearch"%(strand)
-            run_subprocess(cmd,args,log)
-            name_out = name + "_derep"
-            in_files[strand][name_out] = file_out
+            log = "Dereplicate full_length of %s using vsearch"%(name)
+            if not os.path.exists(file_out):
+                run_subprocess(cmd, args, log)
+            in_files['derep']['%s_%s_derep' % (name, type)] = file_out
     return in_files
 
 def combine_and_convert(in_files,args):
@@ -458,20 +457,52 @@ def make_ref_from_uc(in_files,args):
 
 
 
-def cluster_consensus(in_files,args):
+def cluster_consensus(in_files, mapping_dict, args):
     "Cluster concensus with preset id"
-    cmd = [vsearch+" -cluster_smallmem %s -id 0.95 -centroids %s -sizeout -strand both"%
-           (args.consensus,
-            args.consensus_cluster)]
-    log = "Clustering consensus with 95% identity"
-    run_subprocess(cmd,args,log)
-    # in_files['consensus']['consensus_clustered'] = args.consensus_cluster
-    log = "rename cluster_cons for bwa_meth compatibility"
-    cluster_renamed = args.consensus_cluster.replace('.fa','.renamed.fa')
-    cmd = ['cat %s | rename_fast.py -n > %s'%(args.consensus_cluster, cluster_renamed)]
-    run_subprocess(cmd,args,log)
-    log = "faidx index %s" % args.consensus_cluster
-    cmd = ["samtools faidx %s"%args.consensus_cluster]
+    #concatenate and order derep output
+    for name in [k for k in mapping_dict.keys() if 'mono' in k]:
+        #concatenate and order
+        name = name.replace(' ','_')
+        joined = os.path.join(args.outputdir,'%s.joined.derep.fa' % name)
+        merged = os.path.join(args.outputdir,'%s.merged.derep.fa' % name)
+        combined = os.path.join(args.outputdir,'%s.combined.derep.fa' % name)
+        combined_ordered = os.path.join(args.outputdir,'%s.combined.ordered.derep.fa' % name)
+        output_derep = os.path.join(args.outputdir,'%s.clustered.fa' % name)
+        output_derep_renamed = os.path.join(args.outputdir,'%s.clustered.renamed.fa' % name)
+        cmd = ['cat %s %s > %s' % (joined, merged, combined)]
+        log = "combine joined and merged dereplicates reads of %s for sorting" % name
+        if not os.path.exists(combined):
+            run_subprocess(cmd, args, log)
+
+
+        cmd = ['vsearch -sortbylength %s --output %s' % (combined, combined_ordered)]
+        log = 'Sort derep sequences by length.'
+        if not os.path.exists(combined_ordered):
+            run_subprocess(cmd, args, log)
+
+        cmd = [vsearch+" -cluster_smallmem %s -id 0.95 -centroids %s -sizeout -strand both"%
+               (combined_ordered,output_derep
+                )]
+        log = "Clustering consensus with 95% identity"
+        if not os.path.exists(output_derep):
+            run_subprocess(cmd,args,log)
+        # in_files['consensus']['consensus_clustered'] = args.consensus_cluster
+
+        cmd = ['cat %s |rename_fast.py -g %s -n > %s'%(output_derep, name, output_derep_renamed)]
+        log = "rename resulting clusters with number and origin name"
+        if not os.path.exists(output_derep_renamed):
+            run_subprocess(cmd,args,log)
+            cmd = ["samtools faidx %s"%output_derep_renamed]
+            log = "faidx index %s" % output_derep_renamed
+            run_subprocess(cmd, args, log)
+    #concatenate all renamed clusters
+    ref = os.path.join(args.outputdir, 'ref.fa')
+    cmd = ['cat %s/*.renamed.fa > %s' % (args.outputdir, ref)]
+    log = 'concatenate all renamed clusters'
+    run_subprocess(cmd, args, log)
+    #index this new reference sequence
+    cmd = ["samtools faidx %s" % ref]
+    log = "faidx index %s" % ref
     run_subprocess(cmd, args, log)
     return in_files
 
@@ -500,31 +531,26 @@ def clear_tmp(file_dict):
 def main():
     "Main function loop"
     #Check if os is windows, if so, throw error and tell the user that the software cannot run on windows.
-    if os.name == 'nt':
-        raise OSError("This pipeline relies on unix/linux with a bash shell.")
     check_dependencies()
     args = parse_args()
     #Make sure log is empty at start
     if os.path.isfile(args.log):
         os.remove(args.log)
+    #Step 1: get mapping dict for mono's
+    mapping_dict = get_mapping_dict(args)
     #Step 1: Merge Watson and crick reads returns dictionary
-    files = merge_reads(args)
-    #Step 3: join the non overlapping PE reads from watson and crick using vsearch
-    files = join_non_overlapping(files,args)
     #Step 3a use seqtk to trim merged and joined reads from enzyme recognition site
-    files = trim_and_zip(files,args)
+    files = merge_reads(args)
     #Step 4: Dereplicate all watson and crick reads
-    files = dereplicate_reads(files,args)
+    files = trim_split_and_zip(files, mapping_dict, args)
+    #Step 3: join the non overlapping PE reads from watson and crick using vsearch
+    files = join_non_overlapping(files, mapping_dict, args)
+    files = dereplicate_reads(files, mapping_dict, args)
     #Step 5 create binary A/T only fasta output, with headers containing original sequence
-    files = make_binary_output(files,args)
-    #Step 6: create uc file
-    files = make_uc(files,args)
-    #Step 7: make reference directly from single uc file
-    files = make_ref_from_uc(files,args)
     #step 8: Cluster consensus
-    files = cluster_consensus(files,args)
+    files = cluster_consensus(files, mapping_dict, args)
     # step 8: Clean tmp files
-    files = clear_tmp(files)
+    # files = clear_tmp(files)
 
 if __name__ == '__main__':
     main()
