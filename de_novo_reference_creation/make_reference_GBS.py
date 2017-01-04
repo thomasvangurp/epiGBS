@@ -204,7 +204,7 @@ def join_non_overlapping(in_files,mapping_dict, args):
     """join non overlapping PE reads"""
     for key in mapping_dict:
         key = key.replace(' ','_')
-        if 'mono' not in key:
+        if 'mono' not in key and key != 'all':
             continue
         left = os.path.join(args.outputdir, '%s.R1.fq.gz' % key)
         right = os.path.join(args.outputdir, '%s.R2.fq.gz' % key)
@@ -215,7 +215,7 @@ def join_non_overlapping(in_files,mapping_dict, args):
 
 def get_mapping_dict(args):
     """get mapping dict for mono's"""
-    mapping_dict = {}
+    mapping_dict = {'all':None}
     with open(args.barcodes) as barcode_handle:
         header = barcode_handle.readline()[:-1].split('\t')
         for line in barcode_handle:
@@ -248,7 +248,7 @@ def trim_split_and_zip(in_files, mapping_dict, args):
 
     log = 'Zip and split reverse reads'
     file_in = in_files['single_R2']
-    cmd = seqtk + ' seq %s |tee >(pigz -c > %s)' % (file_in, os.path.join(args.outputdir, 'all.R2.fq.gz'))
+    cmd = seqtk + ' seq -r %s |tee >(pigz -c > %s)' % (file_in, os.path.join(args.outputdir, 'all.R2.fq.gz'))
     mono_list = [k for k in mapping_dict.keys() if 'mono' in k.lower()]
     for k in mono_list[:-1]:
         cmd += "|tee >(grep '%s' -A 3|sed '/^--$/d' |pigz -c > %s)" % (
@@ -549,8 +549,9 @@ def main():
     #Step 5 create binary A/T only fasta output, with headers containing original sequence
     #step 8: Cluster consensus
     files = cluster_consensus(files, mapping_dict, args)
-    # step 8: Clean tmp files
-    # files = clear_tmp(files)
+    cmd = 'rm %s/mono*' % args.outputdir
+    log = 'removing all intermeditate files that are no longer needed'
+    run_subprocess(cmd, args, log)
 
 if __name__ == '__main__':
     main()
