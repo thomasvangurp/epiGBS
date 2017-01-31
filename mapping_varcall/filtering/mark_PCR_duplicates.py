@@ -72,9 +72,8 @@ def remove_PCR_duplicates(bam_in, bam_out, ref):
     """Remove PCR duplicates and non-paired PE-reads per cluster"""
     #TODO: implement as module to be ran concurrently with appropriate statistics.
     clusters = SeqIO.parse(open(ref),'fasta')
-    tmp_bam = tempfile.NamedTemporaryFile(suffix="temp_unsorted.bam", dir='/tmp/',delete=False)
     handle = pysam.AlignmentFile(bam_in,'rb')
-    out_handle = pysam.AlignmentFile(tmp_bam,'wb', template=handle)
+    out_handle = pysam.AlignmentFile(bam_out,'wb', template=handle)
     read_count = {}
     for cluster in clusters:
         #TODO: detect enzyme from barcode file to enable other combinations.
@@ -190,14 +189,15 @@ def remove_PCR_duplicates(bam_in, bam_out, ref):
         else:
             print '%s \t%s \t0\t0%%' % (key, count)
     out_handle.close()
-    cmd = ['samtools sort %s > %s' % (tmp_bam.name, bam_out )]
+    cmd = ['samtools sort %s > %s' % (bam_out, bam_out.replace('.bam','.sorted.bam') )]
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, executable='/bin/bash')
     stdout, stderr = p.communicate()
     stdout = stdout.replace('\r', '\n')
     stderr = stderr.replace('\r', '\n')
     print stdout
     print stderr
-    cmd = ['samtools index %s;rm %s' % (bam_out, tmp_bam.name)]
+    os.rename(bam_out.replace('.bam','.sorted.bam'), bam_out)
+    cmd = ['samtools index %s' % (bam_out)]
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, executable='/bin/bash')
     stdout, stderr = p.communicate()
     stdout = stdout.replace('\r', '\n')
