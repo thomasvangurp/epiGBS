@@ -4,7 +4,7 @@ Code for working with epiGBS data.
 
 # Install requirements
 
-0. Tools and dependencies
+1. Tools and dependencies
 
 ```SH
 sudo apt-get update
@@ -15,7 +15,7 @@ libpng-dev libfreetype6-dev pkg-config gfortran \
 libopenblas-dev liblapack-dev
 ```
 
-1. [PEAR: a fast and accurate Illumina Paired-End reAd mergeR](https://dx.doi.org/10.1093/bioinformatics/btt593)
+2. [PEAR: a fast and accurate Illumina Paired-End reAd mergeR](https://dx.doi.org/10.1093/bioinformatics/btt593)
 
 ```SH
 wget http://sco.h-its.org/exelixis/web/software/pear/files/pear-0.9.10-bin-64.tar.gz
@@ -24,7 +24,7 @@ sudo cp pear-0.9.10-bin-64/pear-0.9.10-bin-64 /usr/local/bin
 sudo ln -s /usr/local/bin/pear-0.9.10-bin-64 /usr/local/bin/pear
 ```
 
-2. [vsearch](https://github.com/torognes/vsearch)
+3. [vsearch](https://github.com/torognes/vsearch)
 
 ```SH
 git clone https://github.com/torognes/vsearch.git
@@ -36,7 +36,7 @@ sudo make install
 cd
 ```
 
-3. [Seqtk](https://github.com/lh3/seqtk.git)
+4. [Seqtk](https://github.com/lh3/seqtk.git)
 
 ```SH
 git clone https://github.com/lh3/seqtk.git
@@ -46,7 +46,7 @@ sudo cp seqtk /usr/local/bin/
 cd
 ```
 
-4. [samtools](http://github.com/samtools/)
+5. [samtools](http://github.com/samtools/)
 
 ```SH
 wget https://github.com/samtools/samtools/releases/download/1.3.1/samtools-1.3.1.tar.bz2
@@ -58,7 +58,7 @@ sudo make install
 cd
 ```
 
-5. [bcftools](http://samtools.github.io/bcftools/) 
+6. [bcftools](http://samtools.github.io/bcftools/) 
 
 ```SH
 wget https://github.com/samtools/bcftools/releases/download/1.3.1/bcftools-1.3.1.tar.bz2
@@ -69,7 +69,7 @@ sudo make install
 cd
 ```
 
-6. [bwa-mem](https://github.com/lh3/bwa)
+7. [bwa-mem](https://github.com/lh3/bwa)
 
 ```SH
 git clone https://github.com/lh3/bwa.git
@@ -79,7 +79,7 @@ find ./ -maxdepth 1 -type f -perm /a+x -exec sudo cp {} /usr/local/bin \;
 cd
 ```
 
-7.[seqtk](https://github.com/lh3/seqtk)
+8.[seqtk](https://github.com/lh3/seqtk)
 
 ```SH
 git clone https://github.com/lh3/seqtk)
@@ -87,7 +87,7 @@ cd seqtk
 make
 sudo cp seqtk /usr/local/bin/
 ```
-7. Install remaining requirements with pip
+9. Install remaining requirements with pip
 
 ```SH
 git clone https://github.com/thomasvangurp/epiGBS
@@ -102,7 +102,7 @@ sudo pip install -r epiGBS/requirements.txt
 
 
 
-8. [usearch (C) Copyright 2013 Robert C. Edgar, all rights reserved.](http://drive5.com/usearch)
+10. [usearch (C) Copyright 2013 Robert C. Edgar, all rights reserved.](http://drive5.com/usearch)
 
 Click [here](http://drive5.com/usearch) and follow the instructions to get the 32bit binary.
 
