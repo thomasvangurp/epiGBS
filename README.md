@@ -1,36 +1,110 @@
 # epiGBS
-Code for working with epiGBS data. 
-# Requirements
-1.
 
-PEAR: a fast and accurate Illumina Paired-End reAd mergeR
-Zhang et al (2014) Bioinformatics 30(5): 614-620 | doi:10.1093/bioinformatics/btt593
+Code for working with epiGBS data.
 
-2.
+# Install requirements
 
-usearch (C) Copyright 2013 Robert C. Edgar, all rights reserved.
-http://drive5.com/usearch
+0. Tools and dependencies
 
-3.
+```SH
+sudo apt-get update
+sudo apt-get upgrade
+sudo apt-get install build-essential git zlib1g zlib1g-dev lbzip2 \
+bzip2 dh-autoreconf python-pip python-dev pigz ncurses-dev \
+libpng-dev libfreetype6-dev pkg-config gfortran \
+libopenblas-dev liblapack-dev
+```
 
-seqtk
+1. [PEAR: a fast and accurate Illumina Paired-End reAd mergeR](https://dx.doi.org/10.1093/bioinformatics/btt593)
 
-4.
+```SH
+wget http://sco.h-its.org/exelixis/web/software/pear/files/pear-0.9.10-bin-64.tar.gz
+tar -xf pear-0.9.10-bin-64.tar.gz
+sudo cp pear-0.9.10-bin-64/pear-0.9.10-bin-64 /usr/local/bin
+sudo ln -s /usr/local/bin/pear-0.9.10-bin-64 /usr/local/bin/pear
+```
 
-pysam
+2. [vsearch](https://github.com/torognes/vsearch)
 
-biopython
+```SH
+git clone https://github.com/torognes/vsearch.git
+cd vsearch
+./autogen.sh
+./configure
+make
+sudo make install
+cd
+```
 
-bcftools
+3. [Seqtk](https://github.com/lh3/seqtk.git)
 
-samtools
+```SH
+git clone https://github.com/lh3/seqtk.git
+cd seqtk
+make
+sudo cp seqtk /usr/local/bin/
+cd
+```
 
-vcfutils.pl
+4. [samtools](http://github.com/samtools/)
 
-pyfaidx
+```SH
+wget https://github.com/samtools/samtools/releases/download/1.3.1/samtools-1.3.1.tar.bz2
+tar -xf samtools-1.3.1.tar.bz2
+cd samtools-1.3.1
+./configure
+make
+sudo make install
+cd
+```
 
-rename_fast.py
+5. [bcftools](http://samtools.github.io/bcftools/) 
 
-pigz
+```SH
+wget https://github.com/samtools/bcftools/releases/download/1.3.1/bcftools-1.3.1.tar.bz2
+tar -xf bcftools-1.3.1.tar.bz2
+cd bcftools-1.3.1
+make
+sudo make install
+cd
+```
 
-bwa-mem
+6. [bwa-mem](https://github.com/lh3/bwa)
+
+```SH
+git clone https://github.com/lh3/bwa.git
+cd bwa
+make
+find ./ -maxdepth 1 -type f -perm /a+x -exec sudo cp {} /usr/local/bin \;
+cd
+```
+
+7. Install remaining requirements with pip
+
+```SH
+git clone https://github.com/thomasvangurp/epiGBS
+sudo pip install -r epiGBS/requirements.txt
+```
+
+
+
+
+
+
+
+
+
+8. [usearch (C) Copyright 2013 Robert C. Edgar, all rights reserved.](http://drive5.com/usearch)
+
+Click [here](http://drive5.com/usearch) and follow the instructions to get the 32bit binary.
+
+```SH
+sudo cp /path/to/usearch9.2.64_i86linux32 /usr/local/bin/
+sudo cp usearch9.2.64_i86linux32 /usr/local/bin/
+sudo chmod +x /usr/local/bin/usearch9.2.64_i86linux32
+sudo ln -s /usr/local/bin/usearch9.2.64_i86linux32 /usr/local/bin/usearch
+```
+
+
+
+
