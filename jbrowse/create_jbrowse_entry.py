@@ -272,6 +272,8 @@ def add_gff3(args, jbrowse_json):
 def add_DMP(args, categories):
     """Add bgzipped gff3 files containing DMPs"""
     gff3_dir = os.path.join(args.input_dir,'gff3')
+    if not os.path.exists(gff3_dir):
+        os.mkdir(gff3_dir)
     existing_tracks = []
     #make output dir for symlinks
     output_dir = os.path.join(args.jbrowse_dir, 'data', args.name, 'gff3')
