@@ -188,22 +188,25 @@ def remove_PCR_duplicates(bam_in, bam_out, ref):
             print '%s\t%s\t%s\t%.2f%%'%(key,count,qc_fail,100*qc_fail_pct)
         else:
             print '%s \t%s \t0\t0%%' % (key, count)
-    out_handle.close()
-    cmd = ['samtools sort %s > %s' % (bam_out, bam_out.replace('.bam','.sorted.bam') )]
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, executable='/bin/bash')
-    stdout, stderr = p.communicate()
-    stdout = stdout.replace('\r', '\n')
-    stderr = stderr.replace('\r', '\n')
-    print stdout
-    print stderr
-    os.rename(bam_out.replace('.bam','.sorted.bam'), bam_out)
-    cmd = ['samtools index %s' % (bam_out)]
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, executable='/bin/bash')
-    stdout, stderr = p.communicate()
-    stdout = stdout.replace('\r', '\n')
-    stderr = stderr.replace('\r', '\n')
-    print stdout
-    print stderr
+    # out_handle.close()
+    #
+    # cmd = ['samtools sort %s > %s' % (bam_out, bam_out.replace('.bam','.sorted.bam') )]
+    # p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, executable='/bin/bash')
+    # stdout, stderr = p.communicate()
+    # stdout = stdout.replace('\r', '\n')
+    # stderr = stderr.replace('\r', '\n')
+    # print stdout
+    # print stderr
+    #
+    # os.rename(bam_out.replace('.bam','.sorted.bam'), bam_out)
+    #
+    # cmd = ['samtools index %s' % (bam_out)]
+    # p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, executable='/bin/bash')
+    # stdout, stderr = p.communicate()
+    # stdout = stdout.replace('\r', '\n')
+    # stderr = stderr.replace('\r', '\n')
+    # print stdout
+    # print stderr
     return 0
 
 def main():
