@@ -79,6 +79,14 @@ find ./ -maxdepth 1 -type f -perm /a+x -exec sudo cp {} /usr/local/bin \;
 cd
 ```
 
+7.[seqtk](https://github.com/lh3/seqtk)
+
+```SH
+git clone https://github.com/lh3/seqtk)
+cd seqtk
+make
+sudo cp seqtk /usr/local/bin/
+```
 7. Install remaining requirements with pip
 
 ```SH
