@@ -490,8 +490,8 @@ def cluster_consensus(in_files,args):
     cluster_renamed = args.consensus_cluster.replace('.fa','.renamed.fa')
     cmd = ['cat %s | rename_fast.py -n > %s'%(args.consensus_cluster, cluster_renamed)]
     run_subprocess(cmd,args,log)
-    log = "faidx index %s" % args.consensus_cluster
-    cmd = ["samtools faidx %s"%args.consensus_cluster]
+    log = "faidx index %s" % cluster_renamed
+    cmd = ["samtools faidx %s" % cluster_renamed]
     run_subprocess(cmd, args, log)
     return in_files
 
