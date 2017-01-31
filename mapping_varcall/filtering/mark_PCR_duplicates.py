@@ -210,11 +210,11 @@ def main():
     """main function loop"""
     #1 get command line arguments
     args = parse_args()
-    # if args.log == sys.stdout:
-    #     log = sys.stdout
-    # else:
-    #     log = open(args.log,'w')
-    #2 Remove PCR duplicates.
+    if args.log == sys.stdout:
+        log = sys.stdout
+    else:
+        log = open(args.log,'w')
+    # 2 Remove PCR duplicates.
     if not args.input and args.input_dir:
         for strand in ['watson', 'crick']:
             print "started PCR duplicate removal for %s strand" % (strand)
