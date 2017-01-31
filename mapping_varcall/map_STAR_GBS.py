@@ -19,7 +19,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='use STAR for mapping reads')
     # input files
     parser.add_argument('-s', '--sequences',
-                        help='number of sequences to take for testing')
+                        help='number of sequences to take for testing',default=None)
     parser.add_argument('--tmpdir',
                         help='tmp directory', default="/tmp/")
     parser.add_argument('--input_dir',
@@ -78,6 +78,7 @@ def get_version():
 def remove_PCR_duplicates(args):
     """us subprocess to run external remove_PCR_duplicates routine"""
     cmd = "mark_PCR_duplicates.py -i %s" % os.path.join(args.output_dir,'out.bam')
+    cmd += " --output %s" % os.path.join(args.output_dir,'out.dedup.bam')
     cmd += " -b %s" % args.barcodes
     cmd += " -r %s" % args.reference
     log = "Removal of PCR duplicates"
@@ -337,7 +338,6 @@ def parse_sam(in_file, out_file, read_type, strand):
         if 'C9KR7ANXX_3' in header[3]:
             header[3] += ' ' + header[4]
             header.pop(4)
-            header.pop(5)
         out_line = [header[0]]
         out_line += split_line[1:]
         out_line += header[3:6]
