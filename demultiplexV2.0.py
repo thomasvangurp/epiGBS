@@ -26,7 +26,7 @@ import operator
 import tempfile
 import gzip, bz2
 import time
-
+#TODO: make sure correct sample name appears in stats.txt
 def parse_options():
     """Parses command line options"""
     parser = OptionParser()
