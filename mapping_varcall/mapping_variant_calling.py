@@ -16,6 +16,7 @@ from Bio import SeqIO
 from Bio import Restriction
 
 
+
 def getScriptPath():
     return os.path.dirname(__file__)
 
@@ -572,7 +573,8 @@ def SNP_calling(in_files, args):
     in_files['vcf_out']['merged'] = os.path.join(args.output_dir, 'merged.tsv.gz')
     cmd = ["SNP_calling.py",
            "-m %s" % in_files['vcf_out']['merged'],
-           "-s %s" % in_files['vcf_out']['SNP']]
+           "-m %s" % in_files['vcf_out']['merged'],
+           "-w %s" % os.path.join(args.output_dir, 'watson.vcf.gz')]
     log = "perform SNP calling"
     run_subprocess(cmd, args, log)
 
