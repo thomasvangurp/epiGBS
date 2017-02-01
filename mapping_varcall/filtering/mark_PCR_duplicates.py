@@ -136,7 +136,7 @@ def remove_PCR_duplicates(bam_in, bam_out, ref):
                         read_count[sample]['qc_fail'] += 1
                     except KeyError:
                         read_count[sample]['qc_fail'] = 1
-            if read == None:
+            if read_out == {}:
                 #no reads were found for this contig, continue
                 continue
             #process read_out
