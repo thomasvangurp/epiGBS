@@ -9,7 +9,7 @@ Additionally, the correct barcode is appended at the start  to the read.
 """
 
 import Levenshtein
-import re
+import codecs
 import sys
 import os
 import shutil
@@ -221,16 +221,17 @@ def get_enz_remnant(enz):
 
 def parse_bc(barcodes, fc, ln):
     """Parses barcode file and matches barcodes for specified flowcell and lane"""
-    file_in = open(barcodes, 'r')
+    with codecs.open(barcodes, "r", encoding="utf-8-sig") as f:
+        lines = f.readlines()
     bc_dict = {}
     header_index = {}
-    for line in file_in.readlines():
+    for line in lines:
         if line.startswith("#") or line.startswith("Flowcell"):
-            for n,item in enumerate(line.rstrip('\n').split('\t')):
+            for n,item in enumerate(line.rstrip('\r').rstrip('\n').split('\t')):
                 header_index[n] = item
         else:
             bc_instance = Barcode()
-            for n,item in enumerate(line.rstrip('\n').split('\t')):
+            for n,item in enumerate(line.rstrip('\r').rstrip('\n').split('\t')):
                 if header_index[n] in bc_instance.__dict__:
                     bc_instance.__setattr__(header_index[n],item)
             if bc_instance.ENZ_R1 != None:
