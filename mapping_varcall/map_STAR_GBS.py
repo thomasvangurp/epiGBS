@@ -335,9 +335,6 @@ def parse_sam(in_file, out_file, read_type, strand):
             count += 1
             # continue
         header = split_line[0].split('|')
-        if 'C9KR7ANXX_3' in header[3]:
-            header[3] += ' ' + header[4]
-            header.pop(4)
         out_line = [header[0]]
         out_line += split_line[1:]
         out_line += header[3:6]
