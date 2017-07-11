@@ -104,6 +104,11 @@ def remove_PCR_duplicates(bam_in, bam_out, ref):
             for read in reads:
                 tag_dict = dict(read.tags)
                 try:
+                    assert 'RN' in tag_dict
+                except AssertionError:
+                    raise AssertionError("RN tag is not available in bam file, abort")
+                    break
+                try:
                     tag = tag_dict['RN']
                     sample = tag_dict['RG']
                     AS = tag_dict['AS']

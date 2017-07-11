@@ -226,6 +226,7 @@ def run_STAR(in_files, args):
     in_files['header'] = os.path.join(args.output_dir, 'header.sam')
     cmd = ["map_STAR.py",'--input_dir %s' % args.input_dir,
            "--barcodes %s" % args.barcodes,
+           "--tmpdir %s" % args.tmpdir,
            "--threads %s" % args.threads,
            "--output_dir %s" % args.output_dir]
     if args.sequences != None:

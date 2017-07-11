@@ -6,8 +6,8 @@ import os
 
 input_dir = sys.argv[1]
 
-watson_bam = pysam.AlignmentFile(os.path.join(input_dir,'watson.reheader.bam'),'rb')
-crick_bam  = pysam.AlignmentFile(os.path.join(input_dir,'crick.reheader.bam'),'rb')
+watson_bam = pysam.AlignmentFile(os.path.join(input_dir,'watson.dedup.bam'),'rb')
+crick_bam  = pysam.AlignmentFile(os.path.join(input_dir,'crick.dedup.bam'),'rb')
 
 coverage_dict = {'sample_coverage':{'watson':{},'crick':{}},'contig_coverage':{}}
 contig_list = [entry['SN'] for entry in watson_bam.header['SQ']]
@@ -17,6 +17,8 @@ for read in watson_bam:
     count += 1
     if not count % 1000000:
         print "%s reads in watson parsed"%count
+    if read.is_duplicate or read.is_qcfail:
+        continue
     if read.is_paired and read.is_read2:
         continue
     sample = dict(read.tags)['RG']
@@ -34,10 +36,13 @@ for read in watson_bam:
             coverage_dict['contig_coverage'][contig] = {}
         if sample not in coverage_dict['contig_coverage'][contig]:
             coverage_dict['contig_coverage'][contig][sample] = {'watson':1}
+count = 0
 for read in crick_bam:
     count += 1
     if not count % 1000000:
         print "%s reads in crick parsed"%count
+    if read.is_duplicate or read.is_qcfail:
+        continue
     if read.is_paired and read.is_read2:
         continue
     sample = dict(read.tags)['RG']

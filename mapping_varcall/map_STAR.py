@@ -392,7 +392,9 @@ def parse_sam(in_file, out_file, read_type , strand):
             count += 1
             # continue
         header = split_line[0].split('|')
-        meth_pos_list = header[6:]
+        #meth_post list can be present for both R1 and R2 the last Samtools tag added should be the RN:Z: tag, look
+        #to the right of this tag only
+        meth_pos_list = split_line[0][split_line[0].rindex(':Z:'):].split('|')[1:]
         out_line = [header[0]]
         out_line += split_line[1:9]
         seq = list(split_line[9])
@@ -408,7 +410,10 @@ def parse_sam(in_file, out_file, read_type , strand):
             pass
         out_line += [''.join(seq)]
         out_line += split_line[10:]
-        out_line += header[3:6]
+        for item in header[1:]:
+            if ':' in item and item not in out_line:
+                out_line.append(item)
+        # out_line += header[3:6]
         out_handle.write('\t'.join(out_line) + '\n')
         count += 1
     print '%s mismatches out of %s' % (mismatch, count)
