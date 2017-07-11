@@ -11,8 +11,11 @@ import subprocess
 import tempfile
 import os
 import operator
+import unittest
 import gzip
 
+#unittest for robust modules, for in installation mode help to create robust function
+#integration testing
 origWD = os.getcwd()
 os.chdir(origWD)
 
@@ -75,6 +78,15 @@ def parse_args():
         args.samout = os.path.join(args.outputdir,'clustering.bam')
         args.consensus = os.path.join(args.outputdir,'consensus.fa')
         args.consensus_cluster = os.path.join(args.outputdir,'consensus_cluster.fa')
+    assert os.path.exists(args.barcodes)
+    try:
+        assert os.path.exists(args.forward)
+    except AssertionError:
+        raise AssertionError("%s does not exist" % args.forward)
+    try:
+        assert os.path.exists(args.reverse)
+    except AssertionError:
+        raise AssertionError("%s does not exist" % args.reverse)
     return args
 
 def run_subprocess(cmd,args,log_message):
@@ -480,7 +492,8 @@ def make_ref_from_uc(in_files,args):
 
 def cluster_consensus(in_files,args):
     "Cluster concensus with preset id"
-    cmd = [vsearch+" -cluster_smallmem %s -id 0.95 -centroids %s -sizeout -strand both"%
+    #TODO: vsearch ignores joined sequences, temporarily revert back to vsearch to prevent this from happening.
+    cmd = [usearch+" -cluster_smallmem %s -id 0.95 -centroids %s -sizeout -strand both"%
            (args.consensus,
             args.consensus_cluster)]
     log = "Clustering consensus with 95% identity"
@@ -499,6 +512,11 @@ def check_dependencies():
     """check for presence of dependencies and if not present say where they can be installed"""
 
     return 0
+
+def add_numbers(a,b):
+    """"return sum of a and b"""
+
+
 
 def clear_tmp(file_dict):
     """clear tmp files"""
