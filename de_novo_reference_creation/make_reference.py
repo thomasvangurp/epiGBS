@@ -493,7 +493,7 @@ def make_ref_from_uc(in_files,args):
 def cluster_consensus(in_files,args):
     "Cluster concensus with preset id"
     #TODO: vsearch ignores joined sequences, temporarily revert back to vsearch to prevent this from happening.
-    cmd = [vsearch + "-qmask none -cluster_smallmem %s -id 0.95 -centroids %s -sizeout -strand both"%
+    cmd = [vsearch + " -qmask none -cluster_smallmem %s -id 0.95 -centroids %s -sizeout -strand both"%
            (args.consensus,
             args.consensus_cluster)]
     log = "Clustering consensus with 95% identity"
