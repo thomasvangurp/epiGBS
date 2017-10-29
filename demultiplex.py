@@ -1,9 +1,10 @@
 #!/usr/bin/env python
-"""Python script for converting PE fastq files for a epiGBS run
+"""Python module for barcode deconvolution using paired end fastq files
 This script takes as input
+```
 --r1 left-hand fastq file /1
 --r2 right-hand fastq file /2
-
+```
 V3.0 accepts different enzyme combinations and barcodes simultaneously
 """
 
