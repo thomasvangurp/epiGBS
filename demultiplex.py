@@ -1,14 +1,25 @@
 #!/usr/bin/env python
-"""Python module for barcode deconvolution using paired end fastq files
+"""
+Python module for barcode deconvolution of paired-end fastq files using a barcode file
+
+purpose
+=======
+The purpose of this module is to assign sequences to samples and remove barcodes. For this, the following steps are taken:
+1. Identify the barcode and enzyme recognition site in the forward and reverse read allowing for some mismatches
+2. Remove the nucleotides and quality score letters of the barcode and adapter-derived oligonucleotides
+3. Match the identified barcode from forward and reverse read to a sample and Flowcell using a barcodes.tsv file
+4. Add a sample and read group identifier based on the sample and the flowcell number and lane
 This script takes as input
 ```
 --r1 left-hand fastq file /1
 --r2 right-hand fastq file /2
 ```
 V3.0 accepts different enzyme combinations and barcodes simultaneously
+
+
 """
 
-__version__ = '3.0'
+__version__ = 3.0
 
 import Levenshtein
 import re
