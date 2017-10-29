@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-#use http://rst.ninjs.org for viewing these figures
-#see http://docutils.sourceforge.net/docs/user/rst/quickref.html for a rst reference
+# use http://rst.ninjs.org for viewing these figures
+# see http://docutils.sourceforge.net/docs/user/rst/quickref.html for a rst reference
 """
 Python module for barcode deconvolution of paired-end fastq files using a barcode file
 
@@ -26,7 +26,8 @@ Input files
 Configuration options
 =====================
 
---addRG  Append sample and read group tags in SAM format to the read name. BWA-mem and other aligners can include this information in the SAM/BAM output.
+--addRG  Append sample and read group tags in SAM format to the read name. BWA-mem and other
+aligners can include this information in the SAM/BAM output.
 
 
 Output files
@@ -55,7 +56,8 @@ from Bio import Restriction
 from itertools import product
 from Bio.Data.IUPACData import *
 import tempfile
-import gzip, bz2
+import gzip
+import bz2
 
 
 def parse_options():
@@ -67,13 +69,13 @@ def parse_options():
                       type="string", dest="reads2",
                       help="right-hand fastq file")
     parser.add_option("-b", "--barcodes", metavar="input", action="store",
-                      type="string", dest="barcode",default="barcodes.tsv",
+                      type="string", dest="barcode", default="barcodes.tsv",
                       help="input tab separated barcode file")
     parser.add_option("--output-dir", metavar="outputdir", action="store",
                       type="string", dest="outputdir", default="",
                       help="Specify output directory, only for galaxy")
     parser.add_option("-s", "--split", action="store_true",
-                      default = False, dest="split",
+                      default=False, dest="split",
                       help="Create multiple output files *NOT* recommended")
     parser.add_option("--addRG", action="store_true",
                       default=True, dest="addRG",
@@ -90,7 +92,7 @@ def parse_options():
                       type="string", default="matching-R2",
                       dest="match2")
     parser.add_option("--stat", action="store", metavar="stat",
-                      type="string", default = None,
+                      type="string", default=None,
                       dest="stat", help="statistics of read_nr per barcode")
     parser.add_option("--nomatch1", action="store", metavar="nomatch1",
                       type="string", default="/tmp/non-matching-R1.fastq",
@@ -105,11 +107,11 @@ def parse_options():
                       default=1, dest="delete",
                       help="Remove the barcode from the sequence, default is TRUE")
     parser.add_option("--control-nt", action="store_true",
-                      default = 0, dest="control_nucleotide",
+                      default=0, dest="control_nucleotide",
                       help="implement barcode design with control nucleotide")
     opts, args = parser.parse_args()
     if opts.stat == None:
-        opts.stat = os.path.join(opts.outputdir,'demultiplex_stats.tsv')
+        opts.stat = os.path.join(opts.outputdir, 'demultiplex_stats.tsv')
     return opts, args
 
 
@@ -148,6 +150,7 @@ def get_strand(control_nt):
         strand = 'NA'
     return strand
 
+
 def get_variants(barcode):
     """return list of possible barcodes given ambiguous nucleotides"""
     pos_list = []
@@ -158,7 +161,8 @@ def get_variants(barcode):
         cutrem.append(''.join(comb))
     return cutrem
 
-def levenshtein(read, bc_set, mismatch, max_total_len,control_IUPAC='Y'):
+
+def levenshtein(read, bc_set, mismatch, max_total_len, control_IUPAC='Y'):
     """Calculates the levenshtein distance between a sequence and a set of
     Barcodes. If the longest barcode with a perfect match
     is found this is returned and the script automatically quits"""
@@ -179,8 +183,7 @@ def levenshtein(read, bc_set, mismatch, max_total_len,control_IUPAC='Y'):
         dist = []
         bc_variants = get_variants(barcode[1])
 
-
-        #we need a function to make multiple barcodes with enzyme sites for ambiguous nucleotides
+        # we need a function to make multiple barcodes with enzyme sites for ambiguous nucleotides
         for bc_variant in bc_variants:
             if bc_variant in short_sequence[min(1, start):]:
                 # this can happen if the wobble is shorter than it should be. minimum  wobble length > 1
@@ -208,7 +211,7 @@ def levenshtein(read, bc_set, mismatch, max_total_len,control_IUPAC='Y'):
         # there are multiple matches do not return these conflicting values.
         return None, None, None, None, None
     if min(matches.keys()) <= mismatch:
-        #the left_most Y gives the location of the control-nucleotide
+        # the left_most Y gives the location of the control-nucleotide
         control_nt_index = matches[min(matches.keys())][0][1].index(control_IUPAC)
         control_nt = short_sequence[len(wobble) + control_nt_index]
         strand = get_strand(control_nt)
@@ -253,8 +256,8 @@ class Barcode(object):
 
     def get_seq(self):
         """Return sequence to search on left and right read"""
-        #design of Read_1 is NNN|BARCODE|CONTROL-NT|ENZ-REMNANT
-        #CONTROL-NT for R1  is either C or T, put Y as control nucleotide
+        # design of Read_1 is NNN|BARCODE|CONTROL-NT|ENZ-REMNANT
+        # CONTROL-NT for R1  is either C or T, put Y as control nucleotide
         R1_start = (self.Wobble_R1, self.Barcode_R1 + 'Y' + self.enz_remnant_R1)
         # CONTROL-NT for R2  is either G or A, put R as control nucleotide
         R2_start = (self.Wobble_R2, self.Barcode_R2 + 'Y' + self.enz_remnant_R2)
@@ -276,7 +279,7 @@ def parse_bc(barcodes, fc, ln):
     file_in = open(barcodes, 'r')
     bc_dict = {}
     header_index = {}
-    for line_number,line in enumerate(file_in.readlines()):
+    for line_number, line in enumerate(file_in.readlines()):
         if line_number == 0:
             for n, item in enumerate(line.rstrip('\n').split('\t')):
                 header_index[n] = item
@@ -296,7 +299,7 @@ def parse_bc(barcodes, fc, ln):
                 bc_instance.ENZ_R1 = get_enz('PstI')
             bc_instance.enz_remnant_R1 = get_enz_remnant(bc_instance.ENZ_R1)
             bc_instance.Wobble_R1 = int(bc_instance.Wobble_R1)
-            
+
             if bc_instance.ENZ_R2 != None:
                 bc_instance.ENZ_R2 = get_enz(bc_instance.ENZ_R2)
             else:
@@ -412,9 +415,10 @@ def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
             except StopIteration:
                 break
         left_bc, wobble_left, left_start, control_left, mismatch_left = levenshtein(left_read, bc_set_left,
-                                                                     opts.mismatch, max_bc_len_left)
+                                                                                    opts.mismatch, max_bc_len_left)
         right_bc, wobble_right, right_start, control_right, mismatch_right = levenshtein(right_read, bc_set_right,
-                                                                         opts.mismatch, max_bc_len_right)
+                                                                                         opts.mismatch,
+                                                                                         max_bc_len_right)
         if left_bc and right_bc:
             # Put the correct sequence of the barcode
             try:
@@ -446,12 +450,12 @@ def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
                     wobble_right = 'NNN'
                 wobble = wobble_left + "_" + wobble_right
                 left_read[0] = left_read[0].split(' ')[0].rstrip('\n') \
-                + '\tBL:Z:%s\tBR:Z:%s\tRG:Z:%s\tML:i:%s\tMR:i:%s\tST:Z:%s\n' \
-                  % (left_bc, right_bc, RG_id, mismatch_left, mismatch_right, strand)
+                               + '\tBL:Z:%s\tBR:Z:%s\tRG:Z:%s\tML:i:%s\tMR:i:%s\tST:Z:%s\n' \
+                                 % (left_bc, right_bc, RG_id, mismatch_left, mismatch_right, strand)
 
                 right_read[0] = right_read[0].split(' ')[0].rstrip('\n') \
-                + '\tBL:Z:%s\tBR:Z:%s\tRG:Z:%s\tML:i:%s\tMR:i:%s\tST:Z:%s\n' \
-                  % (left_bc, right_bc, RG_id, mismatch_left, mismatch_right, strand)
+                                + '\tBL:Z:%s\tBR:Z:%s\tRG:Z:%s\tML:i:%s\tMR:i:%s\tST:Z:%s\n' \
+                                  % (left_bc, right_bc, RG_id, mismatch_left, mismatch_right, strand)
                 left_read[0] = left_read[0][:-1] + '\tRN:Z:%s\n' % wobble
                 right_read[0] = right_read[0][:-1] + '\tRN:Z:%s\n' % wobble
             else:
@@ -462,8 +466,8 @@ def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
                     control_NT = 'C'
                 else:
                     control_NT = ''
-                left_bc_only = bc_dict[((3,left_bc), (3,right_bc))].Barcode_R1
-                right_bc_only = bc_dict[((3,left_bc), (3,right_bc))].Barcode_R2
+                left_bc_only = bc_dict[((3, left_bc), (3, right_bc))].Barcode_R1
+                right_bc_only = bc_dict[((3, left_bc), (3, right_bc))].Barcode_R2
                 left_read[1] = left_read[1][left_start + len(left_bc_only + control_NT):]
                 left_read[3] = left_read[3][left_start + len(left_bc_only + control_NT):]
                 right_read[1] = right_read[1][right_start + len(right_bc_only + control_NT):]
@@ -586,6 +590,8 @@ def get_enz(enz):
     for enzyme in Restriction.AllEnzymes:
         if "%s" % (enzyme) == enz:
             return enzyme
+
+
 # #module unittest
 # def test_funtion():
 #
@@ -614,7 +620,7 @@ def write_stats(bc_dict, opts):
         fc = line.split('\t')[0]
         ln = line.split('\t')[1]
         if not (fc == Flowcell and ln == Lane):
-            for k,n in enumerate(line.rstrip('\n').split('\t')):
+            for k, n in enumerate(line.rstrip('\n').split('\t')):
                 indexes[n] = k
             continue
         name = line.split('\t')[indexes['Sample']]
@@ -660,6 +666,7 @@ def main():
         # match1 is the default variable name.
         put_output(opts.output, opts, Flowcell, Lane)
     print "Done."
+
 
 if __name__ == "__main__":
     main()
