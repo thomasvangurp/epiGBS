@@ -1,3 +1,5 @@
+[![Documentation Status](http://epigbs.readthedocs.io/en/latest/?badge=latest)](http://epigbs.readthedocs.io/en/latest/?badge=latest)
+
 # epiGBS
 
 Code for working with epiGBS data.
