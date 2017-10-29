@@ -20,7 +20,10 @@ Contents:
 .. toctree::
    :maxdepth: 2
 
-
+Demultiplexing
+=================
+.. automodule:: demultiplexV3.0
+   :members:
 
 Indices and tables
 ==================
