@@ -1,4 +1,4 @@
-[![Documentation Status](http://epigbs.readthedocs.io/en/latest/?badge=latest)](http://epigbs.readthedocs.io/en/latest/?badge=latest)
+[![Documentation Status](https://readthedocs.org/projects/epigbs/badge/?version=latest)](http://epigbs.readthedocs.io/?badge=latest)
 
 # epiGBS
 
