@@ -4,7 +4,7 @@
    contain the root `toctree` directive.
 
 Python scripts for analysis of epiGBS data
-==================================
+==========================================
 :Author: Thomas van Gurp, Björn Wouters and Contributors
 :Date: |today|
 :Version: |version|
