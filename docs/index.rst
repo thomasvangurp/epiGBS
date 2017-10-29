@@ -22,7 +22,7 @@ Contents:
 
 Demultiplexing
 =================
-.. automodule:: demultiplexV3.0
+.. automodule:: demultiplex
    :members:
 
 Indices and tables
