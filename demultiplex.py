@@ -1,44 +1,61 @@
 #!/usr/bin/env python
+#use http://rst.ninjs.org for viewing these figures
+#see http://docutils.sourceforge.net/docs/user/rst/quickref.html for a rst reference
 """
 Python module for barcode deconvolution of paired-end fastq files using a barcode file
 
 purpose
-=======
-The purpose of this module is to assign sequences to samples and remove barcodes. For this, the following steps are taken:
+-------
+The *purpose* of this module is to assign sequences to samples and remove barcodes.
+For this, the following steps are taken:
+
 1. Identify the barcode and enzyme recognition site in the forward and reverse read allowing for some mismatches
 2. Remove the nucleotides and quality score letters of the barcode and adapter-derived oligonucleotides
 3. Match the identified barcode from forward and reverse read to a sample and Flowcell using a barcodes.tsv file
 4. Add a sample and read group identifier based on the sample and the flowcell number and lane
-This script takes as input
-```
---r1 left-hand fastq file /1
---r2 right-hand fastq file /2
-```
+
+**Mandatory** parameter to be defined for this module are
+
+Input files
+===========
+*gzip compressed files are allowed and even encouraged!*
+
+--r1_in  left-hand or **forward** fastq file or **R1** reads e.g. *R1.fastq.gz*
+--r2_in  right-hand or **reverse** fastq file or **R2** reads e.g. *R2.fastq.gz*
+
+Configuration options
+=====================
+
+--addRG  Append sample and read group tags in SAM format to the read name. BWA-mem and other aligners can include this information in the SAM/BAM output.
+
+
+Output files
+============
+*will be compressed if the .gz extension is present*
+
+--match1  left-hand or **forward** fastq file or **R1** output e.g. *R1.out.fastq.gz*
+--match2  right-hand or **reverse** fastq file or **R2** output e.g. *R2.out.fastq.gz*
+--nomatch1  non-matching left-hand or **forward** fastq file or **R1** output e.g. *R1.out.fastq.gz*
+--nomatch2  non-matching right-hand or **reverse** fastq file or **R2** output e.g. *R2.out.fastq.gz*
+
 V3.0 accepts different enzyme combinations and barcodes simultaneously
 
-
+:Authors:
+     Thomas P. van Gurp
+:Version: 3.0 of 2017/10/2
 """
 
 __version__ = 3.0
 
 import Levenshtein
-import re
-import sys
 import os
-import shutil
-import subprocess
 import shutil
 from optparse import OptionParser
 from Bio import Restriction
 from itertools import product
-from Bio.Seq import Seq
 from Bio.Data.IUPACData import *
-from StringIO import StringIO
-from Bio.SeqRecord import SeqRecord
-import operator
 import tempfile
 import gzip, bz2
-import time
 
 
 def parse_options():
@@ -49,19 +66,15 @@ def parse_options():
     parser.add_option("--r2_in", metavar="reads2", action="store",
                       type="string", dest="reads2",
                       help="right-hand fastq file")
-    parser.add_option("--mode", metavar="mode", action="store", type="string",
-                      dest="mode", help="pe or single end mode", \
-                      default="pe")
     parser.add_option("-b", "--barcodes", metavar="input", action="store",
-                      type="string", dest="barcode", \
-                      default="barcodes.csv",
+                      type="string", dest="barcode",default="barcodes.tsv",
                       help="input tab separated barcode file")
     parser.add_option("--output-dir", metavar="outputdir", action="store",
                       type="string", dest="outputdir", default="",
                       help="Specify output directory, only for galaxy")
     parser.add_option("-s", "--split", action="store_true",
-                      default=0, dest="split",
-                      help="Create multiple output files")
+                      default = False, dest="split",
+                      help="Create multiple output files *NOT* recommended")
     parser.add_option("--addRG", action="store_true",
                       default=True, dest="addRG",
                       help="""Append append FASTA/Q comment to SAM output.
@@ -92,7 +105,7 @@ def parse_options():
                       default=1, dest="delete",
                       help="Remove the barcode from the sequence, default is TRUE")
     parser.add_option("--control-nt", action="store_true",
-                      default=0, dest="control_nucleotide",
+                      default = 0, dest="control_nucleotide",
                       help="implement barcode design with control nucleotide")
     opts, args = parser.parse_args()
     if opts.stat == None:
