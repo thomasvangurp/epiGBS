@@ -120,10 +120,13 @@ def run_subprocess(cmd, log_message):
     """
     sys.stdout.write("now starting:\t%s\n\n" % log_message)
     sys.stdout.write('running:\t%s\n\n' % cmd)
+    if type(cmd) != type([]):
+        cmd = [cmd]
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, executable='/bin/bash')
-    exit_code = p.wait()
-    stdout = p.stdout.read().replace('\r', '\n')
-    stderr = p.stderr.read().replace('\r', '\n')
+    stdout, stderr = p.communicate()
+    exit_code = p.returncode
+    stdout = stdout.replace('\r', '\n')
+    stderr = stderr.replace('\r', '\n')
     if stdout:
         sys.stdout.write('stdout:\n%s\n' % stdout)
     if stderr:
@@ -132,10 +135,7 @@ def run_subprocess(cmd, log_message):
         else:
             sys.stdout.write('stderr:\n%s\n' % stderr)
     sys.stdout.write('finished:\t%s\n\n' % log_message)
-    if exit_code:
-        return Exception("Call of %s failed with \n %s" % (cmd, stderr))
-    else:
-        return 0
+    return 0
 
 
 def compress_folder(args, cur_time):
@@ -497,7 +497,7 @@ def forge_genome_file(description, args):
     forge_r_script.write(adjusted_forge_template)
     forge_r_script.close()
     # Makes from the description file, a folder which can be build and installed via bash.
-    command = "R < "+forge_r_script.name+" --no-save"
+    command = "R < "+forge_r_script.name + " --no-save"
     log_message = "Forging genome file"
     run_subprocess(command, log_message)  # Runs the appended template script.
     return forge_r_script.name

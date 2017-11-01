@@ -1,4 +1,5 @@
-#!/usr/bin/env pypy
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 import argparse
 import subprocess
 import os
@@ -140,6 +141,11 @@ def process_reads_merged(args):
         j += 1
         if not j % 1000000:
             print 'Processed %s reads' % j
+        try:
+            if int(args.sequences) == j:
+                break
+        except TypeError:
+            pass
         if not read:
             break
         if 'watson' in read[0].lower():
@@ -197,6 +203,11 @@ def process_reads_joined(args):
             except StopIteration:
                 break
         j += 1
+        try:
+            if int(args.sequences) == j:
+                break
+        except TypeError:
+            pass
         if not j % 1000000:
             print 'Processed %s reads' % (j)
         if not read_r1:
@@ -237,7 +248,7 @@ def index_STAR(args):
         os.mkdir(merged_STAR_crick_index)
     ref_merged_watson = os.path.join(merged_STAR_watson_index, '%s.merged.watson.fa' % args.species)
     ref_merged_crick = os.path.join(merged_STAR_crick_index, '%s.merged.crick.fa' % args.species)
-        
+
     #make STAR index folder for joined path
     joined_STAR_watson_index = os.path.join(args.output_dir,'STAR_joined_watson')
     joined_STAR_crick_index = os.path.join(args.output_dir,'STAR_joined_crick')
@@ -290,7 +301,7 @@ def index_STAR(args):
     ref_joined_crick_handle.close()
     ref_merged_watson_handle.close()
     ref_merged_crick_handle.close()
-    #MAKE LIST for indexes to be made 
+    #MAKE LIST for indexes to be made
     index_list = [(joined_len, joined_count, joined_STAR_watson_index, ref_joined_watson),
                   (joined_len, joined_count, joined_STAR_crick_index, ref_joined_crick),
                   (merged_len, merged_count, merged_STAR_watson_index, ref_merged_watson),
