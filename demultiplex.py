@@ -632,12 +632,14 @@ def write_stats(bc_dict, opts):
             stat_out.write("%s\t" * 3 % (name, '%s_%s' % (bc_left, bc_right), '0') + '\n')
     stat_out.close()
 
+opts, args = parse_options()
+Flowcell, Lane = get_details_flow(opts)
 
 def main():
     """main function loop"""
-    opts, args = parse_options()
+
     # Make sure we identify the  flowcell and lane records in the barcodefile that correspond to our fastq file
-    Flowcell, Lane = get_details_flow(opts)
+
     bc_dict = parse_bc(opts.barcode, Flowcell, Lane)
     if not os.path.exists(opts.outputdir):
         os.mkdir(opts.outputdir)
