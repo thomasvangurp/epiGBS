@@ -103,6 +103,9 @@ def parse_options():
     parser.add_option("-m", "--mismatches", action="store",
                       type="int", default=2, dest="mismatch",
                       help="Number of mismatches allowed")
+    parser.add_option("--mode", action="store",
+                      default="pe", dest="mode",
+                      help="Paired-end is default and only valid choice")
     parser.add_option("-d", "--delete", action="store_true",
                       default=1, dest="delete",
                       help="Remove the barcode from the sequence, default is TRUE")
@@ -635,40 +638,32 @@ def write_stats(bc_dict, opts):
 opts, args = parse_options()
 Flowcell, Lane = get_details_flow(opts)
 
-def main():
-    """main function loop"""
+bc_dict = parse_bc(opts.barcode, Flowcell, Lane)
+if not os.path.exists(opts.outputdir):
+    os.mkdir(opts.outputdir)
+opts.output = tempfile.mkdtemp(prefix='seq', dir=opts.outputdir)
+if os.path.exists(opts.output):
+    # TODO: check content to see if deletion is warranted
+    pass
+    # shutil.rmtree(opts.output)
+    # os.mkdir(opts.output)
+else:
+    os.mkdir(opts.output)
+# if opts.outputdir:
+#     try:
+#        file_out = open(opts.outputdir, 'w')
+#        file_out.write('%s'%opts.output)
+#        file_out.close()
+#     except OSError:
+#         #TODO: determine error type
+#         pass
+if opts.mode == 'pe':
+    parse_seq_pe(opts, bc_dict, Flowcell, Lane)
+else:
+    parse_seq(opts, bc_dict, Flowcell, Lane)
+write_stats(bc_dict, opts)
+if opts.match1 != 'matching-R1':
+    # match1 is the default variable name.
+    put_output(opts.output, opts, Flowcell, Lane)
+print "Done."
 
-    # Make sure we identify the  flowcell and lane records in the barcodefile that correspond to our fastq file
-
-    bc_dict = parse_bc(opts.barcode, Flowcell, Lane)
-    if not os.path.exists(opts.outputdir):
-        os.mkdir(opts.outputdir)
-    opts.output = tempfile.mkdtemp(prefix='seq', dir=opts.outputdir)
-    if os.path.exists(opts.output):
-        # TODO: check content to see if deletion is warranted
-        pass
-        # shutil.rmtree(opts.output)
-        # os.mkdir(opts.output)
-    else:
-        os.mkdir(opts.output)
-    # if opts.outputdir:
-    #     try:
-    #        file_out = open(opts.outputdir, 'w')
-    #        file_out.write('%s'%opts.output)
-    #        file_out.close()
-    #     except OSError:
-    #         #TODO: determine error type
-    #         pass
-    if opts.mode == 'pe':
-        parse_seq_pe(opts, bc_dict, Flowcell, Lane)
-    else:
-        parse_seq(opts, bc_dict, Flowcell, Lane)
-    write_stats(bc_dict, opts)
-    if opts.match1 != 'matching-R1':
-        # match1 is the default variable name.
-        put_output(opts.output, opts, Flowcell, Lane)
-    print "Done."
-
-
-if __name__ == "__main__":
-    main()
