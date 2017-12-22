@@ -124,7 +124,7 @@ def merge_reads(args):
     cmd+=['-o','%s/merged'%args.outputdir]
     log = "run pear for merging reads"
 
-    # run_subprocess(cmd,args,log)
+    run_subprocess(cmd,args,log)
     #Delete input files and output file name that are no longer needed??
     #append output files as dictionary
     out_files = {'merged':'%smerged'%args.outputdir + ".assembled.fastq",
@@ -193,7 +193,7 @@ def join_fastq(r1,r2,outfile,args):
         max_len_R2 = 200
     #Trim the reads up to the min expected length to improve de novo reference creation for joined reads
     cmd = ["paste <(seqtk seq -A %s | cut -c1-%s) " % (r1, max_len_R1) +
-           "<(seqtk seq -r -A %s |cut -c1-%s)|cut -f1-5" % (r2, max_len_R2)+
+           "<(seqtk seq  -A %s |cut -c1-%s)|cut -f1-5" % (r2, max_len_R2)+
            "|sed '/^>/!s/\t/NNNNNNNN/g' |pigz -p %s -c > %s" % (args.threads, outfile)]
     log = "Combine joined fastq file into single fasta file"
     if not os.path.exists(outfile):
@@ -234,44 +234,44 @@ def trim_split_and_zip(in_files, mapping_dict, args):
     """Trim , split and zip fastq files for mono species"""
     in_files['trimmed'] = {}
 
-    log = 'Zip and split forward reads'
-    file_in = in_files['single_R1']
-    cmd = seqtk + ' seq %s |tee >(pigz -c > %s)' % (file_in, os.path.join(args.outputdir,'all.R1.fq.gz'))
-    mono_list = [k for k in mapping_dict.keys() if 'mono' in k.lower()]
-    for k in mono_list[:-1]:
-        cmd += "|tee >(grep '%s' -A 3|sed '/^--$/d' |pigz -c > %s)" % (k, os.path.join(args.outputdir,'%s.R1.fq.gz'%(k.replace(' ','_'))))
-    #add the latest key to mono 1.
-    k = mono_list[-1]
-    cmd += "|grep '%s' -A 3|sed '/^--$/d' |pigz -c > %s" % (k, os.path.join(args.outputdir,'%s.R1.fq.gz'%k.replace(' ','_')))
-    if not os.path.exists(os.path.join(args.outputdir,'all.R1.fq.gz')):
-        run_subprocess([cmd],args,log)
-
-    log = 'Zip and split reverse reads'
-    file_in = in_files['single_R2']
-    cmd = seqtk + ' seq -r %s |tee >(pigz -c > %s)' % (file_in, os.path.join(args.outputdir, 'all.R2.fq.gz'))
-    mono_list = [k for k in mapping_dict.keys() if 'mono' in k.lower()]
-    for k in mono_list[:-1]:
-        cmd += "|tee >(grep '%s' -A 3|sed '/^--$/d' |pigz -c > %s)" % (
-        k, os.path.join(args.outputdir, '%s.R2.fq.gz' % (k.replace(' ', '_'))))
-    # add the latest key to mono 1.
-    k = mono_list[-1]
-    cmd += "|grep '%s' -A 3|sed '/^--$/d' |pigz -c > %s" % (
-    k, os.path.join(args.outputdir, '%s.R2.fq.gz' % k.replace(' ', '_')))
-    if not os.path.exists(os.path.join(args.outputdir, 'all.R2.fq.gz')):
-        run_subprocess([cmd], args, log)
+    # log = 'Zip and split forward reads'
+    # file_in = in_files['single_R1']
+    # cmd = seqtk + ' seq %s |tee >(pigz -c > %s)' % (file_in, os.path.join(args.outputdir,'all.R1.fq.gz'))
+    # mono_list = [k for k in mapping_dict.keys() if 'mono' in k.lower()]
+    # for k in mono_list[:-1]:
+    #     cmd += "|tee >(grep '%s' -A 3|sed '/^--$/d' |pigz -c > %s)" % (k, os.path.join(args.outputdir,'%s.R1.fq.gz'%(k.replace(' ','_'))))
+    # #add the latest key to mono 1.
+    # k = mono_list[-1]
+    # cmd += "|grep '%s' -A 3|sed '/^--$/d' |pigz -c > %s" % (k, os.path.join(args.outputdir,'%s.R1.fq.gz'%k.replace(' ','_')))
+    # if not os.path.exists(os.path.join(args.outputdir,'all.R1.fq.gz')):
+    #     run_subprocess([cmd],args,log)
+    #
+    # log = 'Zip and split reverse reads'
+    # file_in = in_files['single_R2']
+    # cmd = seqtk + ' seq -r %s |tee >(pigz -c > %s)' % (file_in, os.path.join(args.outputdir, 'all.R2.fq.gz'))
+    # mono_list = [k for k in mapping_dict.keys() if 'mono' in k.lower()]
+    # for k in mono_list[:-1]:
+    #     cmd += "|tee >(grep '%s' -A 3|sed '/^--$/d' |pigz -c > %s)" % (
+    #     k, os.path.join(args.outputdir, '%s.R2.fq.gz' % (k.replace(' ', '_'))))
+    # # add the latest key to mono 1.
+    # k = mono_list[-1]
+    # cmd += "|grep '%s' -A 3|sed '/^--$/d' |pigz -c > %s" % (
+    # k, os.path.join(args.outputdir, '%s.R2.fq.gz' % k.replace(' ', '_')))
+    # if not os.path.exists(os.path.join(args.outputdir, 'all.R2.fq.gz')):
+    #     run_subprocess([cmd], args, log)
 
     #Process merged files
     log = 'Zip and split merged reads'
     file_in = in_files['merged']
-    cmd = seqtk + ' seq %s |tee >(pigz -c > %s)' % (file_in, os.path.join(args.outputdir, 'all.merged.fq.gz'))
-    mono_list = [k for k in mapping_dict.keys() if 'mono' in k.lower()]
-    for k in mono_list[:-1]:
-        cmd += "|tee >(grep '%s' -A 3|sed '/^--$/d' |pigz -c > %s)" % (
-        k, os.path.join(args.outputdir, '%s.merged.fq.gz' % (k.replace(' ', '_'))))
+    cmd = seqtk + ' seq %s |pigz -c > %s' % (file_in, os.path.join(args.outputdir, 'all.merged.fq.gz'))
+    # mono_list = [k for k in mapping_dict.keys() if 'mono' in k.lower()]
+    # for k in mono_list[:-1]:
+    #     cmd += "|tee >(grep '%s' -A 3|sed '/^--$/d' |pigz -c > %s)" % (
+    #     k, os.path.join(args.outputdir, '%s.merged.fq.gz' % (k.replace(' ', '_'))))
     # add the latest key to mono 1.
-    k = mono_list[-1]
-    cmd += "|grep '%s' -A 3|sed '/^--$/d' |pigz -c > %s" % (
-    k, os.path.join(args.outputdir, '%s.merged.fq.gz' % k.replace(' ', '_')))
+    # k = mono_list[-1]
+    # cmd += "|grep '%s' -A 3|sed '/^--$/d' |pigz -c > %s" % (
+    # k, os.path.join(args.outputdir, '%s.merged.fq.gz' % k.replace(' ', '_')))
     if not os.path.exists(os.path.join(args.outputdir, 'all.merged.fq.gz')):
         run_subprocess([cmd], args, log)
 
