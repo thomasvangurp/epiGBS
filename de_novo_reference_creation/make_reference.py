@@ -221,11 +221,13 @@ def join_fastq(r1,r2,outfile,args):
         #no trimming required
         max_len_R1 = 200
         max_len_R2 = 200
-    #Trim the reads up to the min expected length to improve de novo reference creation for joined reads
-    cmd = ["paste <(pigz -p %s -cd %s |seqtk seq -A - | cut -c1-%s) " % (args.threads, r1, max_len_R1) +
-           "<(pigz -p %s -cd %s |seqtk seq -A -|cut -c1-%s)|cut -f1-5" % (args.threads, r2, max_len_R2)+
+    # Trim the reads up to the min expected length to improve de novo reference creation for joined reads
+    # R2 needs to be trimmed in the same way, first make reverse complement (with seqtk -rA),
+    # afterwards, trim the sequence to the desired length, afterwards make reverse complement again (seqtk -r).
+    cmd = ["paste <(seqtk seq -A %s | cut -c1-%s) " % (r1, max_len_R1) +
+           "<(seqtk seq  -rA %s |cut -c1-%s)|seqtk -r - |cut -f1-5" % (r2, max_len_R2) +
            "|sed '/^>/!s/\t/NNNNNNNN/g' |pigz -p %s -c > %s" % (args.threads, outfile)]
-    log = "Combine joined fastq file"
+    log = "Combine joined fastq file into single fasta file"
     run_subprocess(cmd,args,log)
     return True
 
