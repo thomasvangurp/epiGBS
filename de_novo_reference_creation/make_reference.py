@@ -41,13 +41,13 @@ def parse_args():
     #input files
     parser.add_argument('-s','--sequences',
                         help='number of sequences to take for testing, useful for debugging')
-    parser.add_argument('--forward',
+    parser.add_argument('--forward',required=True,
                         help='forward reads fastq')
-    parser.add_argument('--reverse',
+    parser.add_argument('--reverse',required=True,
                     help='reverse reads fastq')
     parser.add_argument('--barcodes',
                         help='max barcode length used to trim joined reads')
-    parser.add_argument('--cycles',default='126',
+    parser.add_argument('--cycles',required=True,
                         help='Number of sequencing cycles / read length')
     parser.add_argument('--min_unique_size',default="2",
                     help='Minimum unique cluster size')
@@ -225,7 +225,7 @@ def join_fastq(r1,r2,outfile,args):
     # R2 needs to be trimmed in the same way, first make reverse complement (with seqtk -rA),
     # afterwards, trim the sequence to the desired length, afterwards make reverse complement again (seqtk -r).
     cmd = ["paste <(seqtk seq -A %s | cut -c1-%s) " % (r1, max_len_R1) +
-           "<(seqtk seq  -rA %s |cut -c1-%s)|seqtk -r - |cut -f1-5" % (r2, max_len_R2) +
+           "<(seqtk seq  -rA %s |cut -c1-%s|seqtk seq -r -) |cut -f1-5" % (r2, max_len_R2) +
            "|sed '/^>/!s/\t/NNNNNNNN/g' |pigz -p %s -c > %s" % (args.threads, outfile)]
     log = "Combine joined fastq file into single fasta file"
     run_subprocess(cmd,args,log)

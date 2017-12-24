@@ -38,13 +38,13 @@ def parse_args():
     #input files
     parser.add_argument('-s','--sequences',
                         help='number of sequences to take for testing, useful for debugging')
-    parser.add_argument('--forward',
+    parser.add_argument('--forward',required=True,
                         help='forward reads fastq')
     parser.add_argument('--reverse',
                     help='reverse reads fastq')
-    parser.add_argument('--barcodes',
+    parser.add_argument('--barcodes',required=True,
                         help='max barcode length used to trim joined reads')
-    parser.add_argument('--cycles',default='126',
+    parser.add_argument('--cycles',required=True,
                         help='Number of sequencing cycles / read length')
     parser.add_argument('--min_unique_size',default="2",
                     help='Minimum unique cluster size')
@@ -124,12 +124,15 @@ def merge_reads(args):
     cmd+=['-o','%s/merged'%args.outputdir]
     log = "run pear for merging reads"
 
-    run_subprocess(cmd,args,log)
+    if not os.path.exists(os.path.join(args.outputdir,'merged.assembled.fastq')):
+        run_subprocess(cmd,args,log)
     #Delete input files and output file name that are no longer needed??
     #append output files as dictionary
     out_files = {'merged':'%smerged'%args.outputdir + ".assembled.fastq",
                          'single_R1':'%smerged'%args.outputdir + ".unassembled.forward.fastq",
                          'single_R2':'%smerged'%args.outputdir + ".unassembled.reverse.fastq"}
+    for v in out_files.values():
+        assert os.path.exists(v)
     return out_files
 
 def remove_methylation(in_files,args):
@@ -191,28 +194,22 @@ def join_fastq(r1,r2,outfile,args):
         #no trimming required
         max_len_R1 = 200
         max_len_R2 = 200
-    #Trim the reads up to the min expected length to improve de novo reference creation for joined reads
-    #R2 needs to be trimmed in the same way, first make reverse complement (with seqtk -rA),
-    #afterwards, trim the sequence to the desired length, afterwards make reverse complement again (seqtk -r).
+    # Trim the reads up to the min expected length to improve de novo reference creation for joined reads
+    # R2 needs to be trimmed in the same way, first make reverse complement (with seqtk -rA),
+    # afterwards, trim the sequence to the desired length, afterwards make reverse complement again (seqtk -r).
     cmd = ["paste <(seqtk seq -A %s | cut -c1-%s) " % (r1, max_len_R1) +
-           "<(seqtk seq  -rA %s |cut -c1-%s|seqtk seq -r -) |cut -f1-5" % (r2, max_len_R2)+
+           "<(seqtk seq  -rA %s |cut -c1-%s | seqtk seq -r - )|cut -f1-5" % (r2, max_len_R2) +
            "|sed '/^>/!s/\t/NNNNNNNN/g' |pigz -p %s -c > %s" % (args.threads, outfile)]
     log = "Combine joined fastq file into single fasta file"
     if not os.path.exists(outfile):
         run_subprocess(cmd,args,log)
     return True
 
-def join_non_overlapping(in_files,mapping_dict, args):
+def join_non_overlapping(in_files, args):
     """join non overlapping PE reads"""
-    for key in mapping_dict:
-        key = key.replace(' ','_')
-        if 'mono' not in key and key != 'all':
-            continue
-        left = os.path.join(args.outputdir, '%s.R1.fq.gz' % key)
-        right = os.path.join(args.outputdir, '%s.R2.fq.gz' % key)
-        joined = os.path.join(args.outputdir, '%s.joined.fq.gz' % key)
-        if not os.path.exists(joined):
-            join_fastq(left, right, joined, args)
+    joined = os.path.join(args.outputdir,'joined.fastq.gz')
+    if not os.path.exists(joined):
+        join_fastq(in_files['single_R1'], in_files['single_R2'], joined, args)
     return in_files
 
 def get_mapping_dict(args):
@@ -232,68 +229,16 @@ def get_mapping_dict(args):
                     mapping_dict[id][k] = v
     return mapping_dict
 
-def trim_split_and_zip(in_files, mapping_dict, args):
-    """Trim , split and zip fastq files for mono species"""
-    in_files['trimmed'] = {}
 
-    # log = 'Zip and split forward reads'
-    # file_in = in_files['single_R1']
-    # cmd = seqtk + ' seq %s |tee >(pigz -c > %s)' % (file_in, os.path.join(args.outputdir,'all.R1.fq.gz'))
-    # mono_list = [k for k in mapping_dict.keys() if 'mono' in k.lower()]
-    # for k in mono_list[:-1]:
-    #     cmd += "|tee >(grep '%s' -A 3|sed '/^--$/d' |pigz -c > %s)" % (k, os.path.join(args.outputdir,'%s.R1.fq.gz'%(k.replace(' ','_'))))
-    # #add the latest key to mono 1.
-    # k = mono_list[-1]
-    # cmd += "|grep '%s' -A 3|sed '/^--$/d' |pigz -c > %s" % (k, os.path.join(args.outputdir,'%s.R1.fq.gz'%k.replace(' ','_')))
-    # if not os.path.exists(os.path.join(args.outputdir,'all.R1.fq.gz')):
-    #     run_subprocess([cmd],args,log)
-    #
-    # log = 'Zip and split reverse reads'
-    # file_in = in_files['single_R2']
-    # cmd = seqtk + ' seq -r %s |tee >(pigz -c > %s)' % (file_in, os.path.join(args.outputdir, 'all.R2.fq.gz'))
-    # mono_list = [k for k in mapping_dict.keys() if 'mono' in k.lower()]
-    # for k in mono_list[:-1]:
-    #     cmd += "|tee >(grep '%s' -A 3|sed '/^--$/d' |pigz -c > %s)" % (
-    #     k, os.path.join(args.outputdir, '%s.R2.fq.gz' % (k.replace(' ', '_'))))
-    # # add the latest key to mono 1.
-    # k = mono_list[-1]
-    # cmd += "|grep '%s' -A 3|sed '/^--$/d' |pigz -c > %s" % (
-    # k, os.path.join(args.outputdir, '%s.R2.fq.gz' % k.replace(' ', '_')))
-    # if not os.path.exists(os.path.join(args.outputdir, 'all.R2.fq.gz')):
-    #     run_subprocess([cmd], args, log)
-
-    #Process merged files
-    log = 'Zip and split merged reads'
-    file_in = in_files['merged']
-    cmd = seqtk + ' seq %s |pigz -c > %s' % (file_in, os.path.join(args.outputdir, 'all.merged.fq.gz'))
-    # mono_list = [k for k in mapping_dict.keys() if 'mono' in k.lower()]
-    # for k in mono_list[:-1]:
-    #     cmd += "|tee >(grep '%s' -A 3|sed '/^--$/d' |pigz -c > %s)" % (
-    #     k, os.path.join(args.outputdir, '%s.merged.fq.gz' % (k.replace(' ', '_'))))
-    # add the latest key to mono 1.
-    # k = mono_list[-1]
-    # cmd += "|grep '%s' -A 3|sed '/^--$/d' |pigz -c > %s" % (
-    # k, os.path.join(args.outputdir, '%s.merged.fq.gz' % k.replace(' ', '_')))
-    if not os.path.exists(os.path.join(args.outputdir, 'all.merged.fq.gz')):
-        run_subprocess([cmd], args, log)
-
-    return in_files
-
-
-
-def dereplicate_reads(in_files, mapping_dict, args):
+def dereplicate_reads(in_files, args):
     """dereplicate reads using vsearch"""
-    in_files['derep'] = {}
-    for type in ['joined','merged']:
-        for name in [k for k in mapping_dict.keys() if 'mono' in k]:
-            name = name.replace(' ','_')
-            file_in = os.path.join(args.outputdir, '%s.%s.fq.gz' % (name, type))
-            file_out = '.'.join(file_in.split('.')[:-2]) + '.derep.fa'
-            cmd = [vsearch +' -derep_fulllength %s -sizeout -minuniquesize 2 -output %s'%(file_in,file_out)]
-            log = "Dereplicate full_length of %s using vsearch"%(name)
-            if not os.path.exists(file_out):
-                run_subprocess(cmd, args, log)
-            in_files['derep']['%s_%s_derep' % (name, type)] = file_out
+    for file_name in ['merged.assembled.fastq','joined.fastq.gz']:
+        file_path = os.path.join(args.outputdir, file_name)
+        file_out = '.'.join(file_path.split('.')[:-2]) + '.derep.fa'
+        cmd = [vsearch +' -derep_fulllength %s -sizeout -minuniquesize 2 -output %s'%(file_path, file_out)]
+        log = "Dereplicate full_length of %s using vsearch" % (file_name)
+        if not os.path.exists(file_out):
+            run_subprocess(cmd, args, log)
     return in_files
 
 def combine_and_convert(in_files,args):
@@ -459,44 +404,41 @@ def make_ref_from_uc(in_files,args):
 
 
 
-def cluster_consensus(in_files, mapping_dict, args):
+def cluster_consensus(in_files, args):
     "Cluster concensus with preset id"
     #concatenate and order derep output
-    for name in [k for k in mapping_dict.keys() if 'mono' in k]:
-        #concatenate and order
-        name = name.replace(' ','_')
-        joined = os.path.join(args.outputdir,'%s.joined.derep.fa' % name)
-        merged = os.path.join(args.outputdir,'%s.merged.derep.fa' % name)
-        combined = os.path.join(args.outputdir,'%s.combined.derep.fa' % name)
-        combined_ordered = os.path.join(args.outputdir,'%s.combined.ordered.derep.fa' % name)
-        output_derep = os.path.join(args.outputdir,'%s.clustered.fa' % name)
-        output_derep_renamed = os.path.join(args.outputdir,'%s.clustered.renamed.fa' % name)
-        cmd = ['cat %s %s > %s' % (joined, merged, combined)]
-        log = "combine joined and merged dereplicates reads of %s for sorting" % name
-        if not os.path.exists(combined):
-            run_subprocess(cmd, args, log)
+    joined = os.path.join(args.outputdir,'joined.derep.fa')
+    merged = os.path.join(args.outputdir,'merged.derep.fa')
+    combined = os.path.join(args.outputdir,'combined.derep.fa')
+    combined_ordered = os.path.join(args.outputdir,'combined.ordered.derep.fa')
+    output_derep = os.path.join(args.outputdir,'clustered.fa')
+    output_derep_renamed = os.path.join(args.outputdir,'clustered.renamed.fa')
+    cmd = ['cat %s %s > %s' % (joined, merged, combined)]
+    log = "combine joined and merged dereplicates reads for sorting"
+    if not os.path.exists(combined):
+        run_subprocess(cmd, args, log)
 
 
-        cmd = ['vsearch -sortbylength %s --output %s' % (combined, combined_ordered)]
-        log = 'Sort derep sequences by length.'
-        if not os.path.exists(combined_ordered):
-            run_subprocess(cmd, args, log)
+    cmd = ['vsearch -sortbylength %s --output %s' % (combined, combined_ordered)]
+    log = 'Sort derep sequences by length.'
+    if not os.path.exists(combined_ordered):
+        run_subprocess(cmd, args, log)
 
-        cmd = [vsearch+" -cluster_smallmem %s -id 0.95 -centroids %s -sizeout -strand both"%
-               (combined_ordered,output_derep
-                )]
-        log = "Clustering consensus with 95% identity"
-        if not os.path.exists(output_derep):
-            run_subprocess(cmd,args,log)
-        # in_files['consensus']['consensus_clustered'] = args.consensus_cluster
+    cmd = [vsearch+" -cluster_smallmem %s -id 0.95 -centroids %s -sizeout -strand both"%
+           (combined_ordered,output_derep
+            )]
+    log = "Clustering consensus with 95% identity"
+    if not os.path.exists(output_derep):
+        run_subprocess(cmd,args,log)
+    # in_files['consensus']['consensus_clustered'] = args.consensus_cluster
 
-        cmd = ['cat %s |rename_fast.py -g %s -n > %s'%(output_derep, name, output_derep_renamed)]
-        log = "rename resulting clusters with number and origin name"
-        if not os.path.exists(output_derep_renamed):
-            run_subprocess(cmd,args,log)
-            cmd = ["samtools faidx %s"%output_derep_renamed]
-            log = "faidx index %s" % output_derep_renamed
-            run_subprocess(cmd, args, log)
+    cmd = ['cat %s |rename_fast.py -n > %s'%(output_derep, output_derep_renamed)]
+    log = "rename resulting clusters with number and origin name"
+    if not os.path.exists(output_derep_renamed):
+        run_subprocess(cmd,args,log)
+        cmd = ["samtools faidx %s"%output_derep_renamed]
+        log = "faidx index %s" % output_derep_renamed
+        run_subprocess(cmd, args, log)
     #concatenate all renamed clusters
     ref = os.path.join(args.outputdir, 'ref.fa')
     cmd = ['cat %s/*.renamed.fa > %s' % (args.outputdir, ref)]
@@ -529,7 +471,8 @@ def clear_tmp(file_dict):
         os.remove(item)
     return 0
 
-
+args = parse_args()
+# files = join_non_overlapping({}, args)
 def main():
     "Main function loop"
     #Check if os is windows, if so, throw error and tell the user that the software cannot run on windows.
@@ -539,21 +482,16 @@ def main():
     if os.path.isfile(args.log):
         os.remove(args.log)
     #Step 1: get mapping dict for mono's
-    mapping_dict = get_mapping_dict(args)
+    # mapping_dict = get_mapping_dict(args)
     #Step 1: Merge Watson and crick reads returns dictionary
     #Step 3a use seqtk to trim merged and joined reads from enzyme recognition site
     files = merge_reads(args)
-    #Step 4: Dereplicate all watson and crick reads
-    files = trim_split_and_zip(files, mapping_dict, args)
-    #Step 3: join the non overlapping PE reads from watson and crick using vsearch
-    files = join_non_overlapping(files, mapping_dict, args)
-    files = dereplicate_reads(files, mapping_dict, args)
+    #Step 3: join the non overlapping PE reads using vsearch
+    files = join_non_overlapping(files, args)
+    files = dereplicate_reads(files,args)
     #Step 5 create binary A/T only fasta output, with headers containing original sequence
     #step 8: Cluster consensus
-    files = cluster_consensus(files, mapping_dict, args)
-    cmd = 'rm %s/mono*' % args.outputdir
-    log = 'removing all intermeditate files that are no longer needed'
-    run_subprocess(cmd, args, log)
+    files = cluster_consensus(files, args)
 
 if __name__ == '__main__':
     main()
