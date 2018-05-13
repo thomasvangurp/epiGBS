@@ -94,6 +94,9 @@ def parse_options():
     parser.add_option("--stat", action="store", metavar="stat",
                       type="string", default=None,
                       dest="stat", help="statistics of read_nr per barcode")
+    parser.add_option("--nonconversion", action="store", metavar="nonconversion",
+                      type="string", default=None,
+                      dest="nonconversion", help="Non conversion statistics")
     parser.add_option("--nomatch1", action="store", metavar="nomatch1",
                       type="string", default="/tmp/non-matching-R1.fastq",
                       dest="nomatch1", help="statistics of read_nr per barcode")
@@ -115,6 +118,8 @@ def parse_options():
     opts, args = parser.parse_args()
     if opts.stat == None:
         opts.stat = os.path.join(opts.outputdir, 'demultiplex_stats.tsv')
+    if opts.nonconversion == None:
+        opts.nonconversion = os.path.join(opts.outputdir, 'nonconversion.tsv')
     return opts, args
 
 
@@ -145,13 +150,10 @@ def search_fast(sequence, barcodes, mismatch, position, enz_sites, max_bc_length
 
 def get_strand(control_nt):
     """give strand given control nucleotide"""
-    if control_nt == 'T':
-        strand = 'Watson'
-    elif control_nt == 'C':
-        strand = 'Crick'
+    if control_nt in 'CT':
+        return control_nt
     else:
-        strand = 'NA'
-    return strand
+        return None
 
 
 def get_variants(barcode):
@@ -193,9 +195,8 @@ def levenshtein(read, bc_set, mismatch, max_total_len, control_IUPAC='Y'):
                 wobble = short_sequence[:short_sequence.index(bc_variant)]
                 control_nt_index = barcode[1].index(control_IUPAC)
                 control_nt = short_sequence[len(wobble) + control_nt_index]
-                strand = get_strand(control_nt)
                 # wobble = short_sequence[:index]
-                return barcode[1], wobble, len(wobble), strand, 0
+                return barcode[1], wobble, len(wobble), control_nt, 0
             try:
                 part1 = short_sequence[barcode[0]:len(barcode[1]) + barcode[0]]
             except ValueError:
@@ -217,8 +218,7 @@ def levenshtein(read, bc_set, mismatch, max_total_len, control_IUPAC='Y'):
         # the left_most Y gives the location of the control-nucleotide
         control_nt_index = matches[min(matches.keys())][0][1].index(control_IUPAC)
         control_nt = short_sequence[len(wobble) + control_nt_index]
-        strand = get_strand(control_nt)
-        return barcode, short_sequence[:start], start, strand, min(matches.keys())
+        return barcode, short_sequence[:start], start, control_nt, min(matches.keys())
     else:
         return None, None, None, None, None
 
@@ -343,6 +343,25 @@ def read_type(left_read, right_read, left_enzsite, right_enzsite, left_bc, right
             else:
                 return 'nodet'
 
+def write_non_conversion_stats(args, conversion):
+    """write non conversion statistics on a per sample basis."""
+    with open(args.nonconversion,'w') as stat_out:
+        header = ['Sample','Watson-count','Crick-count','Non-conversion-count','non-conversion-rate','other-count']
+        stat_out.write('\t'.join(header) + '\n')
+        for sample, count_dict in sorted(conversion.items()):
+            try:
+                watson_count = count_dict['C_T']
+                crick_count = count_dict['T_C']
+                non_conv_count = count_dict['C_C']
+                non_conv_rate = non_conv_count / float(non_conv_count +
+                                                       watson_count +
+                                                       crick_count)
+            except KeyError:
+                continue
+            line_out = [sample, str(watson_count), str(crick_count), str(non_conv_count),
+                        '%.5f' % non_conv_rate, str(sum(count_dict.values()) - watson_count - crick_count - non_conv_count)]
+            stat_out.write('\t'.join(line_out) + '\n')
+    print stat_out.name
 
 def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
     """Fastq/a-parser for PE-reads"""
@@ -407,6 +426,7 @@ def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
     max_bc_len_left = max([k[0] + len(k[1]) for k in bc_set_left])
     max_bc_len_right = max([k[0] + len(k[1]) for k in bc_set_right])
     left_read = [True]
+    conversion = {}
     while left_read[0]:
         seq += 1
         left_read = []
@@ -443,10 +463,24 @@ def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
                     except KeyError:
                         continue
                 RG_id = '%s_%s_%s' % (Flowcell, Lane, SM_id)
+                try:
+                    conversion[SM_id][control_left + '_' + control_right] += 1
+                except KeyError:
+                    if SM_id not in conversion:
+                        conversion[SM_id] = {}
+                    conversion[SM_id][control_left + '_' + control_right] = 1
                 if control_left != control_right:
-                    strand = control_left
-                else:
-                    strand = control_left
+                    #this is the default situation. A read is arbitrarily assigned to "Watson" or "Crick"
+                    #depending on the conversion occuring on the forward or reverse read
+                    if control_left == 'C':
+                        #the control nucleotide on the forward read was not converted, we call this a Watson read
+                        strand = 'Watson'
+                    else:
+                        # the control nucleotide on the forward read was converted, we call this a Crick read
+                        strand = 'Crick'
+                if control_left not in 'CT' or control_right not in 'CT':
+                    #one of the reads does not have the right nucleotide, discard!
+                    continue
                 if wobble_left == '':
                     wobble_left = 'NNN'
                 if wobble_right == '':
@@ -496,6 +530,7 @@ def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
     seq2_out.close()
     nomatch1_out.close()
     nomatch2_out.close()
+    write_non_conversion_stats(opts, conversion)
     return bc_dict
 
 
