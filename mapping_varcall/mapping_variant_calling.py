@@ -66,9 +66,12 @@ def parse_args():
                         help='heatmap output methylation')
     args = parser.parse_args()
     if args.input_dir:
-        args.reads_R1 = os.path.join(args.input_dir,'Unassembled.R1.watson.fq.gz')
-        args.reads_R2 = os.path.join(args.input_dir,'Unassembled.R2.crick.fq.gz')
-        args.merged = os.path.join(args.input_dir,'Assembled.fq.gz')
+        if not args.reads_R1:
+            args.reads_R1 = os.path.join(args.input_dir,'Unassembled.R1.watson.fq.gz')
+        if not args.reads_R2:
+            args.reads_R2 = os.path.join(args.input_dir,'Unassembled.R2.crick.fq.gz')
+        if not args.merged:
+            args.merged = os.path.join(args.input_dir,'Assembled.fq.gz')
         if args.reference == None:
             args.reference = os.path.join(args.input_dir,'consensus_cluster.renamed.fa')
         if args.barcodes == None:
@@ -224,7 +227,11 @@ def run_STAR(in_files, args):
     in_files['bam_out']['watson'] = os.path.join(args.output_dir, 'watson.dedup.bam')
     in_files['bam_out']['crick'] = os.path.join(args.output_dir, 'crick.dedup.bam')
     in_files['header'] = os.path.join(args.output_dir, 'header.sam')
-    cmd = ["map_STAR.py",'--input_dir %s' % args.input_dir,
+    cmd = ["map_STAR.py",
+           '--reads_R1 %s' % args.reads_R1,
+           '--reads_R2 %s' % args.reads_R2,
+           '--merged %s' % args.merged,
+           '--reference %s' % args.reference,
            "--barcodes %s" % args.barcodes,
            "--tmpdir %s" % args.tmpdir,
            "--threads %s" % args.threads,
@@ -525,7 +532,7 @@ def variant_calling_samtools(in_files,args):
     in_files['vcf_out']['crick'] = os.path.join(args.output_dir,'crick.vcf.gz')
 
     cmd = ["samtools mpileup --reference %s -gt DP,AD,INFO/AD" % (args.reference) +
-           " --max-depth  10000000 " +  # call at max-depth of 10.000.000
+           " --max-depth  999999999 " +  # call at max-depth of 10.000.000
            "-q 0 " +  # Do not skip alignments with low mapQ
            "-Q 15 " +  # Skip bases with baseQ/BAQ smaller than 15
            "--skip-indels " +  # skip indels
@@ -538,7 +545,7 @@ def variant_calling_samtools(in_files,args):
 
 
     cmd = ["samtools mpileup --reference %s -gt DP,AD,INFO/AD" % (args.reference) +
-           " --max-depth  10000000 " + #call at max-depth of 10.000.000
+           " --max-depth  999999999 " + #call at max-depth of 10.000.000
            "-q 0 " + #Do not skip alignments with low mapQ #TODO: investigate option
            "-Q 15 " + #Skip bases with baseQ/BAQ smaller than 15
            "--skip-indels " + #skip indels
@@ -615,6 +622,6 @@ def main():
     files = merge_watson_crick(files,args)
     files = SNP_calling(files, args)
     files = methylation_calling(files,args)
-    print 'done'
+    print('done')
 if __name__ == '__main__':
     main()
