@@ -58,6 +58,8 @@ from Bio.Data.IUPACData import *
 import tempfile
 import gzip
 import bz2
+# from mem_top import mem_top
+
 
 
 def parse_options():
@@ -203,7 +205,7 @@ def levenshtein(read, bc_set, mismatch, max_total_len, control_IUPAC='Y'):
                 dist.append(100)
                 continue
             part2 = bc_variant
-            dist.append(Levenshtein.distance(part1, part2))
+            dist.append(Levenshtein.distance(part1.decode(), part2.decode()))
         try:
             # get the enz site with the min distance
             matches[min(dist)] += [barcode]
@@ -309,7 +311,7 @@ def parse_bc(barcodes, fc, ln):
                 bc_instance.ENZ_R2 = get_enz('PstI')
             bc_instance.enz_remnant_R2 = get_enz_remnant(bc_instance.ENZ_R2)
             bc_instance.Wobble_R2 = int(bc_instance.Wobble_R2)
-            if Flowcell == fc and Lane == ln:
+            if bc_instance.Flowcell == fc and bc_instance.Lane == ln:
                 bc_dict[bc_instance.get_seq()] = bc_instance
     return bc_dict
 
@@ -361,7 +363,7 @@ def write_non_conversion_stats(args, conversion):
             line_out = [sample, str(watson_count), str(crick_count), str(non_conv_count),
                         '%.5f' % non_conv_rate, str(sum(count_dict.values()) - watson_count - crick_count - non_conv_count)]
             stat_out.write('\t'.join(line_out) + '\n')
-    print stat_out.name
+    print(stat_out.name)
 
 def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
     """Fastq/a-parser for PE-reads"""
@@ -388,14 +390,14 @@ def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
         if opts.reads1.endswith('.gz'):
             seq1_name += '.gz'
             seq2_name += '.gz'
-            seq1_out = gzip.open(os.path.join(opts.output, seq1_name), 'a')
-            seq2_out = gzip.open(os.path.join(opts.output, seq2_name), 'a')
+            seq1_out = gzip.open(os.path.join(opts.output, seq1_name), 'wb')
+            seq2_out = gzip.open(os.path.join(opts.output, seq2_name), 'wb')
         else:
-            seq1_out = open(os.path.join(opts.output, seq1_name), 'a')
-            seq2_out = open(os.path.join(opts.output, seq2_name), 'a')
+            seq1_out = open(os.path.join(opts.output, seq1_name), 'w')
+            seq2_out = open(os.path.join(opts.output, seq2_name), 'w')
     if opts.reads1.endswith('.gz'):
-        nomatch1_out = gzip.open(opts.nomatch1, "w")
-        nomatch2_out = gzip.open(opts.nomatch2, "w")
+        nomatch1_out = gzip.open(opts.nomatch1, "wb")
+        nomatch2_out = gzip.open(opts.nomatch2, "wb")
     else:
         nomatch1_out = open(opts.nomatch1, "w")
         nomatch2_out = open(opts.nomatch2, "w")
@@ -433,8 +435,8 @@ def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
         right_read = []
         for i in range(4):
             try:
-                left_read += [seq1_handle.readline()]
-                right_read += [seq2_handle.readline()]
+                left_read += [seq1_handle.readline().decode()]
+                right_read += [seq2_handle.readline().decode()]
             except StopIteration:
                 break
         left_bc, wobble_left, left_start, control_left, mismatch_left = levenshtein(left_read, bc_set_left,
@@ -474,12 +476,27 @@ def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
                     #depending on the conversion occuring on the forward or reverse read
                     if control_left == 'C':
                         #the control nucleotide on the forward read was not converted, we call this a Watson read
-                        strand = 'Watson'
-                    else:
+                        if control_right == 'T':
+                            strand = 'Crick'
+                        else:
+                            nomatch1_out.write(''.join(left_read).encode('utf-8'))
+                            nomatch2_out.write(''.join(right_read).encode('utf-8'))
+                            continue
+                    elif control_left == 'T':
                         # the control nucleotide on the forward read was converted, we call this a Crick read
-                        strand = 'Crick'
-                if control_left not in 'CT' or control_right not in 'CT':
-                    #one of the reads does not have the right nucleotide, discard!
+                        if control_right == 'C':
+                            strand = 'Watson'
+                        else:
+                            nomatch1_out.write(''.join(left_read).encode('utf-8'))
+                            nomatch2_out.write(''.join(right_read).encode('utf-8'))
+                            continue
+                    else:
+                        nomatch1_out.write(''.join(left_read).encode('utf-8'))
+                        nomatch2_out.write(''.join(right_read).encode('utf-8'))
+                        continue
+                else:
+                    nomatch1_out.write(''.join(left_read).encode('utf-8'))
+                    nomatch2_out.write(''.join(right_read).encode('utf-8'))
                     continue
                 if wobble_left == '':
                     wobble_left = 'NNN'
@@ -510,8 +527,8 @@ def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
                 right_read[1] = right_read[1][right_start + len(right_bc_only + control_NT):]
                 right_read[3] = right_read[3][right_start + len(right_bc_only + control_NT):]
             if not opts.split:
-                seq1_out.write(''.join(left_read))
-                seq2_out.write(''.join(right_read))
+                seq1_out.write(''.join(left_read).encode('utf-8'))
+                seq2_out.write(''.join(right_read).encode('utf-8'))
             else:
                 # If splitting is activated, compression takes too long, disable!
                 output_location_1 = os.path.join(opts.output,
@@ -520,12 +537,12 @@ def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
                                                  "%s_%s_2.fastq" % (bc_dict[((3, left_bc), (3, right_bc))].Sample))
                 output_handle_1 = open(output_location_1, 'a')
                 output_handle_2 = open(output_location_2, 'a')
-                output_handle_1.write(''.join(left_read))
-                output_handle_2.write(''.join(right_read))
+                output_handle_1.write(''.join(left_read).encode('utf-8'))
+                output_handle_2.write(''.join(right_read).encode('utf-8'))
         else:
             # Barcode sequence was not recognized
-            nomatch1_out.write(''.join(left_read))
-            nomatch2_out.write(''.join(right_read))
+            nomatch1_out.write(''.join(left_read).encode('utf-8'))
+            nomatch2_out.write(''.join(right_read).encode('utf-8'))
     seq1_out.close()
     seq2_out.close()
     nomatch1_out.close()
@@ -599,7 +616,7 @@ def get_details_flow(opts):
             seq1_handle = open(opts.reads1, "rb")
         except IOError:
             seq1_handle = gzip.open(opts.reads1 + '.gz', "rb")
-    illumina_id = seq1_handle.readline().split(':')
+    illumina_id = seq1_handle.readline().decode().split(':')
     Flowcell, Lane = illumina_id[2:4]
     return Flowcell, Lane
 
@@ -700,5 +717,5 @@ write_stats(bc_dict, opts)
 if opts.match1 != 'matching-R1':
     # match1 is the default variable name.
     put_output(opts.output, opts, Flowcell, Lane)
-print "Done."
+print("Done.")
 
