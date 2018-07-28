@@ -205,7 +205,7 @@ def levenshtein(read, bc_set, mismatch, max_total_len, control_IUPAC='Y'):
                 dist.append(100)
                 continue
             part2 = bc_variant
-            dist.append(Levenshtein.distance(part1.decode(), part2.decode()))
+            dist.append(Levenshtein.distance(part1, part2))
         try:
             # get the enz site with the min distance
             matches[min(dist)] += [barcode]
