@@ -1,0 +1,11 @@
+#basedir : "/tmp/Plantago_run2/"
+basedir       : "/Users/thomasvangurp/epiGBS/test_snakemake_epiGBS/"
+#reads
+R1            : "Plantago_run1_TKD180500654_HL3L7CCXY_L8_1.fq.gz"
+R2            : "Plantago_run1_TKD180500654_HL3L7CCXY_L8_2.fq.gz"
+barcodes      : "plantago_barcodes.tsv"
+epiGBSdir     : "/Users/thomasvangurp/Dropbox/Thomas_NIOO/bioinformatics/epiGBS/github_repository/epiGBS/"
+PythonVersion : "pypy3"
+tmpdir        : "/tmp"
+#number of sequencing cycles
+cycles        : 150

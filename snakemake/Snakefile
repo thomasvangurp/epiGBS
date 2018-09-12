@@ -1,0 +1,63 @@
+configfile: "config.yaml"
+
+rule demultiplex:
+    input:
+        R1=expand("{path}{R1}", path=config["basedir"], R1=config["R1"]),
+        R2=expand("{path}{R2}", path=config["basedir"], R2=config["R2"]),
+        barcodes=expand("{path}{barcodes}",
+                path=config["basedir"],
+                barcodes=config["barcodes"])
+    params:
+        outputdir=expand("{basedir}/output_demultiplex",
+        basedir=config["basedir"]),
+        mode="pe",
+        addRG=True,
+        epiGBSdir=config['epiGBSdir'],
+        PythonVersion=config["PythonVersion"]
+    output:
+        nomatch1="output_demultiplex/no-match.R1.fastq.gz",
+        nomatch2="output_demultiplex/no-match.R2.fastq.gz",
+        nonconversion="output_demultiplex/nonconversion.tsv",
+        demultiplex_stats="output_demultiplex/demultiplex_stats.tsv",
+        match1="output_demultiplex/seq*/R1_output_demultiplex*",
+        match2="output_demultiplex/seq*/R2_output_demultiplex*"
+    shell:
+        "{params.PythonVersion} {params.epiGBSdir}/demultiplex.py "
+        "--r1_in {input.R1} "
+        "--r2_in {input.R2} "
+        "--mode {params.mode} "
+        "--barcodes {input.barcodes} "
+        "--output-dir {params.outputdir} "
+        "--nomatch1 {output.nomatch1} "
+        "--nomatch2 {output.nomatch2} "
+        #figure out how to make shell command optional
+        "--addRG "
+        "-d "
+        "--control-nt "
+
+rule make_reference:
+    input:
+        forward="output_demultiplex/seq*/R1*",
+        reverse="output_demultiplex/seq*/R2*"
+    params:
+        cycles=config["cycles"],
+        tmpdir=config["tmpdir"],
+        PythonVersion=config["PythonVersion"]
+    threads: 30
+    output:
+        ref="output_denovo/consensus_cluster.renamed.fa",
+        log="output_denovo/make_reference.log"
+    shell:
+        "{params.PythonVersion} {params.epiGBSdir}" +
+        "/de_novo_reference_creation/make_reference.py "
+        "--help "
+        "--threads {threads} "
+        "--cycles {params.cycles} "
+        "-t {params.tmpdir} "
+        "--log {output.log}"
+
+
+rule all:
+    input:
+        "output_denovo/consensus_cluster.renamed.fa",
+        "output_denovo/make_reference.log"
