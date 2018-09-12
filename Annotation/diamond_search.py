@@ -16,7 +16,7 @@ def parse_args():
                         help='xml output with diamond results')
     parser.add_argument('-t', '--threads', type=str, default=None,
                         help='number of threads to use simultaneously')
-    parser.add_argument('-s', '--sensitive', action='store_true',
+    parser.add_argument('--sensitive', action='store_true',
                         help='number of threads to use simultaneously')
     parser.add_argument('-m', '--maxtargetseqs', type=str, default='20',
                         help='The maximum number of target sequences per query to keep alignments for')
@@ -24,7 +24,7 @@ def parse_args():
                         help='Maximum expected value to keep an alignment.')
     parser.add_argument('-l', '--log', type=str, default=None,
                         help='log file')
-    parser.add_argument('--tmpdir', type=str, default=tempfile.gettempdir(),
+    parser.add_argument('--tmpdir', type=str, default='/tmp/',
                         help='tmp dir, defaults to system tmp dir')
     args = parser.parse_args()
     return args
@@ -40,8 +40,8 @@ def run_subprocess(cmd,args,log_message):
         log.flush()
         p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True,executable='bash')
         stdout, stderr = p.communicate()
-        stdout = stdout.replace('\r','\n')
-        stderr = stderr.replace('\r','\n')
+        stdout = stdout.decode().replace('\r','\n')
+        stderr = stderr.decode().replace('\r','\n')
         if stdout:
             log.write('stdout:\n%s\n'%stdout)
         if stderr:
@@ -60,20 +60,21 @@ def diamond_command(args):
     cmd.append('--salltitles') #add full description to blast results, for pretty blast2go output
     if args.sensitive:
         cmd.append('--sensitive')
-    cmd.append('-j %s' % args.threads)
     cmd.append('-f 5') #xml output
-    cmd.append('-db %s' % args.db) #xml output
+    cmd.append('-c 4' ) #index-chunks default option
+    cmd.append('--db "%s"' % args.db) #xml output
     cmd.append('-t %s' % args.tmpdir) #temp directory
-    cmd.append('-q %s' % args.sequences) #query, input fasta
-    cmd.append('-o %s' % args.xmloutput) #xml output
+    cmd.append('-q "%s"' % args.sequences) #query, input fasta
+    cmd.append('-o "%s"' % args.xmloutput) #xml output
     if args.xmloutput.endswith('.gz'):
-        cmd.append('-compress 1') #enable gzip compression
+        cmd.append('--compress 1') #enable gzip compression
     log = 'run diamond'
+    run_subprocess(cmd,args,log)
 
 
 def main():
-
-    return 0
+    args = parse_args()
+    diamond_command(args)
 
 
 if __name__ == '__main__':

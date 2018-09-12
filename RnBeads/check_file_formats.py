@@ -54,7 +54,7 @@ def check_sample_file(sample_input):
     header_format = ["sampleID", "filename_bed"]
     for i, item in enumerate(header[0:2]):
         if item != header_format[i]:
-            raise FormatError("Wrong header format. (Needs to be sampleID\\tfilename_bed)")
+            raise FormatError("Wrong header format. (Needs to be sampleID,filename_bed)")
     for item in header[2:]:
         split_item = item.split("_")
         for word in split_item:

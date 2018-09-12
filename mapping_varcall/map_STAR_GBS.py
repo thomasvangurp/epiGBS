@@ -1,4 +1,5 @@
 #!/usr/bin/env pypy
+# -*- coding: utf-8 -*-
 import argparse
 import subprocess
 import os
@@ -8,8 +9,7 @@ import tempfile
 import urllib
 import json
 import ssl
-from Bio import SeqIO
-
+import codecs
 __author__ = 'thomasvangurp'
 __description__ = "map reads orders of magnitudes faster using STAR"
 
@@ -72,7 +72,7 @@ def get_version():
     url = 'https://api.github.com/repos/thomasvangurp/epiGBS/commits'
     context = ssl._create_unverified_context()
     result = json.load(urllib.urlopen(url, context=context))
-    print ''
+    print('')
 
 
 def remove_PCR_duplicates(args):
@@ -97,8 +97,8 @@ def run_subprocess(cmd, args, log_message):
         log.flush()
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, executable='/bin/bash')
         stdout, stderr = p.communicate()
-        stdout = stdout.replace('\r', '\n')
-        stderr = stderr.replace('\r', '\n')
+        stdout = stdout.decode("utf-8").replace('\r', '\n')
+        stderr = stderr.decode("utf-8").replace('\r', '\n')
         if stdout:
             log.write('stdout:\n%s\n' % stdout)
         if stderr:
@@ -114,72 +114,47 @@ def process_reads_merged(args):
     """process reads and make them ready for mapping with STAR"""
     merged = tempfile.NamedTemporaryFile(suffix=".fastq", prefix='merged', dir=args.tmpdir, delete=False)
     args.merged_out = merged.name
-    print 'Started processing merged reads'
     if args.merged.endswith('.gz'):
-        file_in_handle = gzip.open(args.merged, 'rb')
+        cmd = "pigz -cd %s" % args.merged
     else:
-        file_in_handle = open(args.merged, 'r')
-    handle = open(merged.name, 'w')
-    j = 0
-    while True:
-        read = []
-        for i in range(4):
-            try:
-                read.append(file_in_handle.next())
-            except StopIteration:
-                break
-        j += 1
-        if not j % 1000000:
-            print 'Processed %s reads' % j
-        if not read:
-            break
-        header = '@%s\n' % (read[0][1:-1].replace(' ', '|').replace('\t', '|'))
-        handle.write(header + read[1] + '+\n' + read[3])
-    handle.close()
+        cmd = "cat %s" % args.merged
+    if args.sequences != None:
+        cmd += '|head -n %s' % (int(args.sequences) * 4)
+    log = 'use mawk to convert spaces and tabs to | in merged reads'
+    cmd+= """ |mawk '{if (NR%%4==1) gsub(" ","|") gsub(/\t/,"|");print}' > %s""" % (args.merged_out)
+    run_subprocess([cmd], args, log)
     return args
 
 
 def process_reads_joined(args):
     """process reads and make them ready for mapping with STAR"""
-
     joined_r1 = tempfile.NamedTemporaryFile(suffix=".fastq", prefix='joined_R1_', dir=args.tmpdir,
                                                    delete=False)
     joined_r2 = tempfile.NamedTemporaryFile(suffix=".fastq", prefix='joined_R2_', dir=args.tmpdir,
                                                    delete=False)
-    args.joined_r1 = joined_r1.name
-    args.joined_r2 = joined_r2.name
-
-    print 'Started processing joined reads'
+    #use mawk to write fastq files, replacing tabs and spaces for |
+    args.joined_r1_out = joined_r1.name
+    args.joined_r2_out = joined_r2.name
     if args.reads_R1.endswith('.gz'):
-        r1_handle = gzip.open(args.reads_R1, 'rb')
-        r2_handle = gzip.open(args.reads_R2, 'rb')
+        cmd = "pigz -cd %s" % args.reads_R1
     else:
-        r1_handle = open(args.reads_R1, 'rb')
-        r2_handle = open(args.reads_R2, 'rb')
-    # make 4 file handles for forward and reverse watson and crick
-    r1_handle_out = open(args.joined_r1, 'w')
-    r2_handle_out = open(args.joined_r2, 'w')
-    j = 0
-    while True:
-        read_r1 = []
-        read_r2 = []
-        for i in range(4):
-            try:
-                read_r1.append(r1_handle.next())
-                read_r2.append(r2_handle.next())
-            except StopIteration:
-                break
-        j += 1
-        if not j % 1000000:
-            print 'Processed %s reads' % (j)
-        if not read_r1:
-            break
+        cmd = "cat %s" % args.reads_R1
+    if args.sequences != None:
+        cmd += '|head -n %s' % (int(args.sequences) * 4)
+    log = 'use mawk to convert spaces and tabs to | in forward reads'
+    cmd+= """ |mawk '{if (NR%%4==1) gsub(" ","|") gsub(/\t/,"|");print}' > %s""" % (args.joined_r1_out)
+    run_subprocess([cmd], args, log)
 
-        header = '@%s\n' % (read_r1[0][1:-1].replace(' ', '|').replace('\t', '|'))
-        r1_handle_out.write(header + read_r1[1].upper() + '+\n' + read_r1[3])
-        r2_handle_out.write(header + read_r2[1].upper() + '+\n' + read_r2[3])
-    r1_handle_out.close()
-    r2_handle_out.close()
+    #process reverse reads
+    if args.reads_R2.endswith('.gz'):
+        cmd = "pigz -cd %s" % args.reads_R2
+    else:
+        cmd = "cat %s" % args.reads_R2
+    if args.sequences != None:
+        cmd += '|head -n %s' % (int(args.sequences) * 4)
+    log = 'use mawk to convert spaces and tabs to | in reverse reads'
+    cmd+= """ |mawk '{if (NR%%4==1) gsub(" ","|") gsub(/\t/,"|");print}' > %s""" % (args.joined_r2_out)
+    run_subprocess([cmd], args, log)
     return args
 
 
@@ -262,7 +237,7 @@ def map_STAR(args):
 
         if type == 'joined':
             # cmd += " --readFilesIn %(joined)s" % vars(args)
-            cmd += " --readFilesIn %(joined_r1)s %(joined_r2)s" % vars(args)
+            cmd += " --readFilesIn %(joined_r1_out)s %(joined_r2_out)s" % vars(args)
         else:
             cmd += " --readFilesIn %(merged_out)s" % vars(args)
 
@@ -270,16 +245,16 @@ def map_STAR(args):
         cmd += " --outFileNamePrefix %s" % (os.path.join(args.output_dir, '%s' % (type)))
         cmd += " --outReadsUnmapped Fastx"  # output of unmapped reads for inspection
         cmd += " --scoreGapATAC -2 --scoreGapNoncan -2"
-        # cmd += " --readFilesCommand pigz -cd"
-        # outFilterScoreMinOverLread : float: sam as outFilterMatchNmin, but normalized to the read length (sum of mates’ lengths for paired-end reads)
-        # outFilterMatchNminOverLread: float: same as outFilterScoreMin, but normalized to read length (sum of mates’ lengths for paired-end reads)
+        if args.joined_r1_out.endswith('.gz'):
+            cmd += " --readFilesCommand pigz -cd"
+        # outFilterScoreMinOverLread : float: sam as outFilterMatchNmin, but normalized to the read length (sum of mates lengths for paired-end reads)
+        # outFilterMatchNminOverLread: float: same as outFilterScoreMin, but normalized to read length (sum of mates lengths for paired-end reads)
 
         # –outFilterMultimapNmax 1 int: maximum number of loci the read is allowed to map to. Alignments (all of
         # them) will be output only if the read maps to no more loci than this value.
         cmd += " --outFilterMismatchNoverLmax 0.90"
-        # TODO: implement --alignEndsType endtoend mapping after joined reads are merged
         cmd += "--outFilterMatchNminOverLread 0.9 --scoreGap -4 " \
-               " --alignEndsType EndToEnd" \
+               " --alignEndsType Extend5pOfReads12" \
                " --alignSoftClipAtReferenceEnds No" \
                " --outSAMorder PairedKeepInputOrder" \
                " --outFilterMultimapNmax 1" \
@@ -340,8 +315,8 @@ def parse_sam(in_file, out_file, read_type, strand):
         out_line += header[3:6]
         out_handle.write('\t'.join(out_line) + '\n')
         count += 1
-    print '%s mismatches out of %s' % (mismatch, count)
-    print '%s reads out of  %s soft clipped more than 5' % (clip_count_total, count)
+    print('%s mismatches out of %s' % (mismatch, count))
+    print('%s reads out of  %s soft clipped more than 5' % (clip_count_total, count))
 
 
 def addRG(in_files, args):

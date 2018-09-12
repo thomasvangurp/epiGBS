@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env pypy
 # -*- coding: utf-8 -*-
 import argparse
 import subprocess
@@ -167,20 +167,20 @@ def process_reads_merged(args):
 def process_reads_joined(args):
     """process reads and make them ready for mapping with STAR"""
 
-    watson_joined_r1 = tempfile.NamedTemporaryFile(suffix=".fastq", prefix='watson_joined', dir=args.tmpdir,
+    watson_joined_r1 = tempfile.NamedTemporaryFile(suffix=".fastq", prefix='watson_joined_r1', dir=args.tmpdir,
                                                    delete=False)
-    watson_joined_r2 = tempfile.NamedTemporaryFile(suffix=".fastq", prefix='watson_joined', dir=args.tmpdir,
+    watson_joined_r2 = tempfile.NamedTemporaryFile(suffix=".fastq", prefix='watson_joined_r2', dir=args.tmpdir,
                                                    delete=False)
-    crick_joined_r1 = tempfile.NamedTemporaryFile(suffix=".fastq", prefix='crick_joined', dir=args.tmpdir,
+    crick_joined_r1 = tempfile.NamedTemporaryFile(suffix=".fastq", prefix='crick_joined_r1', dir=args.tmpdir,
                                                    delete=False)
-    crick_joined_r2 = tempfile.NamedTemporaryFile(suffix=".fastq", prefix='crick_joined', dir=args.tmpdir,
+    crick_joined_r2 = tempfile.NamedTemporaryFile(suffix=".fastq", prefix='crick_joined_r2', dir=args.tmpdir,
                                                    delete=False)
     args.watson_joined_r1 = watson_joined_r1.name
     args.watson_joined_r2 = watson_joined_r2.name
     args.crick_joined_r1 = crick_joined_r1.name
     args.crick_joined_r2 = crick_joined_r2.name
 
-    print 'Started processing joined reads'
+    print('Started processing joined reads')
     if args.reads_R1.endswith('.gz'):
         r1_handle = gzip.open(args.reads_R1, 'rb')
         r2_handle = gzip.open(args.reads_R2, 'rb')
@@ -209,7 +209,7 @@ def process_reads_joined(args):
         except TypeError:
             pass
         if not j % 1000000:
-            print 'Processed %s reads' % (j)
+            print('Processed %s reads' % (j))
         if not read_r1:
             break
         if 'watson' in read_r1[0].lower():

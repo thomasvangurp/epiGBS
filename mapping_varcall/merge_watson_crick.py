@@ -1,4 +1,4 @@
-#!/usr/bin/env pypy
+#!/usr/bin/env python
 """pypy only merge watson and crick calls to custom format"""
 import argparse
 import gzip

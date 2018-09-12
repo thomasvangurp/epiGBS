@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 import os
 import operator
+import copy
 import unittest
 import gzip
 
@@ -100,8 +101,8 @@ def run_subprocess(cmd,args,log_message):
         log.flush()
         p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True,executable='bash')
         stdout, stderr = p.communicate()
-        stdout = stdout.replace('\r','\n')
-        stderr = stderr.replace('\r','\n')
+        stdout = stdout.decode().replace('\r','\n')
+        stderr = stderr.decode().replace('\r','\n')
         if stdout:
             log.write('stdout:\n%s\n'%stdout)
         if stderr:
@@ -164,6 +165,8 @@ def merge_reads(args):
 
 def remove_methylation(in_files,args):
     """Remove methylation in watson and crick using sed"""
+    #make deepcopy to prevent
+    dict_out = copy.deepcopy(in_files)
     for strand in ['watson','crick']:
         for key,value in in_files[strand].items():
             name_out = key + "_demethylated"
@@ -177,8 +180,8 @@ def remove_methylation(in_files,args):
                 cmd = ["sed '/^[A,C,G,T,N]*$/s/G/A/g' "+value + "| pigz -p %s -c >"%(args.threads)+file_out]
             log = "use sed to remove methylation variation in %s_%s"%(strand,key)
             run_subprocess(cmd,args,log)
-            in_files[strand][name_out] = file_out
-    return in_files
+            dict_out[strand][name_out] = file_out
+    return dict_out
 
 def reverse_complement(read):
     """fast reverse complement"""
@@ -439,6 +442,13 @@ def get_ref(clusters):
             crick_nt = max(output_count[i]['c'].iteritems(), key=operator.itemgetter(1))[0]
         except KeyError:
             return None
+        except AttributeError:
+            #occurs in python3, there we should use items and not iteritems
+            try:
+                watson_nt = max(output_count[i]['w'].items(), key=operator.itemgetter(1))[0]
+                crick_nt = max(output_count[i]['c'].items(), key=operator.itemgetter(1))[0]
+            except KeyError:
+                return None
         if watson_nt == crick_nt:
             output_fasta += watson_nt
         elif watson_nt == 'G' and crick_nt == 'A':
@@ -533,7 +543,7 @@ def clear_tmp(file_dict):
                 if type(value) == type([]):
                     purge_list.append(value[0])
     for item in purge_list:
-        print "removing %s" % item
+        print("removing %s" % item)
         os.remove(item)
     return 0
 

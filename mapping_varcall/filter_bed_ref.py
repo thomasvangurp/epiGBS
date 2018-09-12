@@ -3,6 +3,7 @@ __author__ = 'thomasvangurp'
 import sys
 import argparse
 from Bio import SeqIO
+import gzip
 
 def parse_args():
     """Parse command line arguments"""
@@ -55,7 +56,10 @@ def check_context(cluster,position,ref,context):
 
 def filter_bed(args, ref_dict):
     """Filter bed file on percentage of sites being called and context"""
-    bed_in_handle = open(args.bed,'r')
+    if args.bed.endswith('.gz'):
+        bed_in_handle = gzip.open(args.bed,'r')
+    else:
+        bed_in_handle = open(args.bed, 'r')
     bed_out_handle = open(args.bedout,'w')
     header = bed_in_handle.readline()
     bed_out_handle.write(header)
