@@ -18,6 +18,8 @@ def parse_args():
 
 def merge_line(watson_line,crick_line):
     """merge watson and crick output"""
+    if 'DP=0;' in watson_line[7] and 'DP=0;' in crick_line[7]:
+        return None
     out_line = watson_line[:2]
     out_line += [watson_line[3]]
     out_line += [watson_line[4].replace('<*>','').rstrip(',')]
@@ -62,6 +64,7 @@ def merge(args):
     #TODO: define output header, should include sample names
     output = open(args.output, 'w')
     count = 0
+    chrom_pos = []
     while True:
         if read_watson:
             watson_line = watson_handle.readline()
@@ -82,11 +85,15 @@ def merge(args):
         if read_watson:
             while True:
                 watson_line = watson_handle.readline()[:-1].split('\t')
+                if watson_line[0] not in chrom_pos:
+                    chrom_pos.append(watson_line[0])
                 if 'INDEL' not in watson_line:
                     break
         if read_crick:
             while True:
                 crick_line = crick_handle.readline()[:-1].split('\t')
+                if crick_line[0] not in chrom_pos:
+                    chrom_pos.append(crick_line[0])
                 if 'INDEL' not in crick_line:
                     break
         if len(watson_line) < 2 or len(crick_line) < 2:
@@ -95,7 +102,7 @@ def merge(args):
             if watson_line[1] == crick_line[1]:
                 count += 1
                 if not count % 1000000:
-                    print 'processed %s lines' % count
+                    print('processed %s lines' % count)
                 output_line = merge_line(watson_line, crick_line)
                 if output_line:
                     output.write(output_line)
@@ -109,7 +116,7 @@ def merge(args):
             else:
                 read_crick = False
                 read_watson = True
-        elif int(watson_line[0]) > int(crick_line[0]):
+        elif chrom_pos.index(watson_line[0]) > chrom_pos.index(crick_line[0]):
             read_watson = False
             read_crick = True
         else:

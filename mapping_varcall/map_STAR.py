@@ -33,6 +33,8 @@ def parse_args():
                         help='merged watson and crick fastq')
     parser.add_argument('--reference',
                     help='reference clusters')
+    parser.add_argument('--refgenome',
+                        help='reference clusters')
     parser.add_argument('--barcodes',
                     help='Barcodes used in output')
     parser.add_argument('--species',
@@ -78,7 +80,7 @@ def get_version():
     url = 'https://api.github.com/repos/thomasvangurp/epiGBS/commits'
     context = ssl._create_unverified_context()
     result = json.load(urllib.urlopen(url,context=context))
-    print ''
+    print('')
 
 
 
@@ -86,7 +88,10 @@ def remove_PCR_duplicates(args):
     """us subprocess to run external remove_PCR_duplicates routine"""
     cmd =  "mark_PCR_duplicates.py --input_dir %s" % args.output_dir
     cmd += " -b %s" % args.barcodes
-    cmd += " -r %s" % args.reference
+    if not args.refgenome:
+        cmd += " -r %s" % args.reference
+    else:
+        cmd += " -r %s" % args.refgenome
     log = "Removal of PCR duplicates"
     run_subprocess([cmd], args, log)
     return args
@@ -123,7 +128,7 @@ def process_reads_merged(args):
     args.crick_merged = crick_merged.name
     watson_convert = ['C', 'T']
     crick_convert = ['G', 'A']
-    print 'Started processing merged reads'
+    print('Started processing merged reads')
     if args.merged.endswith('.gz'):
         file_in_handle = gzip.open(args.merged, 'rb')
     else:
@@ -140,7 +145,7 @@ def process_reads_merged(args):
                 break
         j += 1
         if not j % 1000000:
-            print 'Processed %s reads' % j
+            print('Processed %s reads' % j)
         try:
             if int(args.sequences) == j:
                 break
@@ -261,46 +266,92 @@ def index_STAR(args):
     #get file handle for input reference file
     try:
         file_handle = open(args.reference, 'r')
-    except IOError:
-        raise IOError('file %s does not exist' % args.reference)
-
-    #iterate over input lines and write to references
-    joined_len = 0
-    merged_len = 0
-    joined_count = 0
-    merged_count = 0
-    ref_merged_watson_handle = open(ref_merged_watson,'w')
-    ref_merged_crick_handle = open(ref_merged_crick,'w')
-    ref_joined_watson_handle = open(ref_joined_watson,'w')
-    ref_joined_crick_handle = open(ref_joined_crick,'w')
-    seq = ''
-    for line in file_handle:
-        if line.startswith('>'):
-            if seq != '':
-                if 'NNNNNNNN' in seq.upper():
+        joined_len = 0
+        merged_len = 0
+        joined_count = 0
+        merged_count = 0
+        ref_merged_watson_handle = open(ref_merged_watson, 'w')
+        ref_merged_crick_handle = open(ref_merged_crick, 'w')
+        ref_joined_watson_handle = open(ref_joined_watson, 'w')
+        ref_joined_crick_handle = open(ref_joined_crick, 'w')
+        seq = ''
+        for line in file_handle:
+            if line.startswith('>'):
+                if seq != '':
+                    if 'NNNNNNNN' in seq.upper():
+                        joined_len += len(seq)
+                        joined_count += 1
+                        ref_joined_watson_handle.write(header + seq.upper().replace('C', 'T') + '\n')
+                        ref_joined_crick_handle.write(header + seq.upper().replace('G', 'A') + '\n')
+                    else:
+                        merged_len += len(seq)
+                        merged_count += 1
+                        ref_merged_watson_handle.write(header + seq.upper().replace('C', 'T') + '\n')
+                        ref_merged_crick_handle.write(header + seq.upper().replace('G', 'A') + '\n')
+                seq = ''
+                header = line
+            else:
+                seq += line.rstrip('\n')
+        # write final sequence, this is always merged
+        merged_len += len(seq)
+        merged_count += 1
+        ref_merged_watson_handle.write(header + seq.upper().replace('C', 'T') + '\n')
+        ref_merged_crick_handle.write(header + seq.upper().replace('G', 'A') + '\n')
+        # close file handles
+        ref_joined_watson_handle.close()
+        ref_joined_crick_handle.close()
+        ref_merged_watson_handle.close()
+        ref_merged_crick_handle.close()
+    except TypeError:
+        file_handle = open(args.refgenome, 'r')
+        joined_len = 0
+        merged_len = 0
+        joined_count = 0
+        merged_count = 0
+        ref_merged_watson_handle = open(ref_merged_watson, 'w')
+        ref_merged_crick_handle = open(ref_merged_crick, 'w')
+        ref_joined_watson_handle = open(ref_joined_watson, 'w')
+        ref_joined_crick_handle = open(ref_joined_crick, 'w')
+        seq = ''
+        for line in file_handle:
+            if line.startswith('>'):
+                if seq != '':
                     joined_len += len(seq)
                     joined_count += 1
-                    ref_joined_watson_handle.write(header + seq.upper().replace('C','T')+'\n')
-                    ref_joined_crick_handle.write(header + seq.upper().replace('G','A')+'\n')
-                else:
+                    ref_joined_watson_handle.write(header + seq.upper().replace('C', 'T') + '\n')
+                    ref_joined_crick_handle.write(header + seq.upper().replace('G', 'A') + '\n')
                     merged_len += len(seq)
                     merged_count += 1
                     ref_merged_watson_handle.write(header + seq.upper().replace('C', 'T') + '\n')
                     ref_merged_crick_handle.write(header + seq.upper().replace('G', 'A') + '\n')
-            seq = ''
-            header = line
-        else:
-            seq += line.rstrip('\n')
-    #write final sequence, this is always merged
+                seq = ''
+                header = line
+            else:
+                seq += line.rstrip('\n')
+
+        joined_len += len(seq)
+        joined_count += 1
+        ref_joined_watson_handle.write(header + seq.upper().replace('C', 'T') + '\n')
+        ref_joined_crick_handle.write(header + seq.upper().replace('G', 'A') + '\n')
+    # write final sequence, this is always merged
     merged_len += len(seq)
     merged_count += 1
-    ref_merged_watson_handle.write(header + seq.upper().replace('C', 'T') + '\n')
-    ref_merged_crick_handle.write(header + seq.upper().replace('G', 'A') + '\n')
-    #close file handles
+    try:
+        ref_merged_watson_handle.write(header + seq.upper().replace('C', 'T') + '\n')
+        ref_merged_crick_handle.write(header + seq.upper().replace('G', 'A') + '\n')
+    except ValueError:
+        ref_merged_watson_handle = open(ref_merged_watson, 'a')
+        ref_merged_crick_handle = open(ref_merged_crick, 'a')
+        ref_merged_watson_handle.write(header + seq.upper().replace('C', 'T') + '\n')
+        ref_merged_crick_handle.write(header + seq.upper().replace('G', 'A') + '\n')
+    # close file handles
     ref_joined_watson_handle.close()
     ref_joined_crick_handle.close()
     ref_merged_watson_handle.close()
     ref_merged_crick_handle.close()
+
+    #iterate over input lines and write to references
+
     #MAKE LIST for indexes to be made
     index_list = [(joined_len, joined_count, joined_STAR_watson_index, ref_joined_watson),
                   (joined_len, joined_count, joined_STAR_crick_index, ref_joined_crick),
@@ -427,8 +478,8 @@ def parse_sam(in_file, out_file, read_type , strand):
         # out_line += header[3:6]
         out_handle.write('\t'.join(out_line) + '\n')
         count += 1
-    print '%s mismatches out of %s' % (mismatch, count)
-    print '%s reads out of  %s soft clipped more than 5' % (clip_count_total, count)
+    print('%s mismatches out of %s' % (mismatch, count))
+    print('%s reads out of  %s soft clipped more than 5' % (clip_count_total, count))
 
 def addRG(in_files,args):
     """make header for output bamfile and split in watson and crick"""

@@ -206,6 +206,8 @@ def join_fastq(r1,r2,outfile,args):
             barcode_1_max_len = 0
             barcode_2_max_len = 0
             for line in bc_handle:
+                if line == '\n':
+                   continue
                 split_line = line.rstrip('\n').split('\t')
                 try:
                     #TODO: make control nucleotide explicit option in barcode file, now harccoded!
@@ -544,7 +546,7 @@ def clear_tmp(file_dict):
                     purge_list.append(value[0])
     for item in purge_list:
         print("removing %s" % item)
-        os.remove(item)
+        # os.remove(item)
     return 0
 
 

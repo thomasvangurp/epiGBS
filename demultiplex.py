@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env pypy3
 # use http://rst.ninjs.org for viewing these figures
 # see http://docutils.sourceforge.net/docs/user/rst/quickref.html for a rst reference
 """

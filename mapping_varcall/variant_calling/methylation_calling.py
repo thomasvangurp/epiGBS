@@ -261,12 +261,12 @@ def methylation_calling(split_line, context, SNP_nearby):
     #             self.processed_samples[sample_name]['methylated'] = watson_sample
     # return 1
 
-def get_SNP(handle, split_line, SNP_nearby):
+def get_SNP(handle, split_line, SNP_nearby, chrom_pos):
     """return SNPs 2 basepairs up and downstream from methylation polymorphism"""
     chrom, pos = split_line[:2]
     for n,SNP in enumerate(SNP_nearby):
         chrom_SNP,pos_SNP = SNP[:2]
-        if int(chrom_SNP) < int(chrom):
+        if chrom_pos[chrom_SNP] < chrom_pos[chrom]:
             SNP_nearby.pop(n)
         elif int(pos_SNP) < int(pos) -2 and chrom_SNP == chrom:
             SNP_nearby.pop(n)
@@ -328,6 +328,7 @@ def main():
     reference_genome = SeqIO.to_dict(SeqIO.parse(args.reference, "fasta"))
     SNP_nearby = []
     igv_handle = open(args.heatmap_output,'w')
+    chrom_pos = {v:k for k,v in enumerate(reference_genome.keys())}
     with open(args.methylation_output, 'w') as handle:
         with os.popen("pigz -cd %s" % args.SNP_input) as SNP_handle:
             #read all lines with comments
@@ -348,13 +349,13 @@ def main():
                 if split_line[2] not in ['C','G']:
                     #skip ref position with no CG
                     continue
-                SNP_nearby = get_SNP(SNP_handle, split_line, SNP_nearby)
+                SNP_nearby = get_SNP(SNP_handle, split_line, SNP_nearby,chrom_pos)
                 #remove methylation variation observations distorted by SNP observations
                 split_line = remove_SNP(split_line, SNP_nearby)
                 context_dict = calc_context(split_line, reference_genome, SNP_nearby)
                 count += 1
                 if not count % 1000000:
-                    print 'processed %s lines ' % count
+                    print('processed %s lines ' % count)
                 #if multiple contexts results, give key-value pairs for context/line
                 for context, split_line in sorted(context_dict.items()):
                     #TODO: change field code for SNP induced different meth contexts

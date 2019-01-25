@@ -123,7 +123,11 @@ def remove_PCR_duplicates(bam_in, bam_out, ref):
                         read_out[sample][tag][read.qname]+= AS
                     except KeyError:
                         read_out[sample][tag][read.qname] = AS
-                if tag_dict['AS'] < 0.9 * cluster_seq_len:
+                if read.is_paired:
+                    min_AS = read.query_length * 2
+                else:
+                    min_AS = read.query_length
+                if tag_dict['AS'] < 0.9 * min_AS:
                     #alignment score lower than read length, subset read
                     read.is_qcfail = True
                     #update the 'failed' dictionary to exclude this read
@@ -175,24 +179,24 @@ def remove_PCR_duplicates(bam_in, bam_out, ref):
                     except KeyError:
                         read_count[sample]['dup_count'] = 1
                 out_handle.write(read)
-    print 'Sample:\tReads:\tDuplicates:\tDuplicate rate:'
+    print('Sample:\tReads:\tDuplicates:\tDuplicate rate:')
     for key , subdict in sorted(read_count.items()):
         count = subdict['count']
         if 'dup_count' in subdict:
             dup_count = subdict['dup_count']
             dup_pct = dup_count / float(count)
-            print '%s\t%s\t%s\t%.2f%%'%(key,count,dup_count,100*dup_pct)
+            print('%s\t%s\t%s\t%.2f%%'%(key,count,dup_count,100*dup_pct))
         else:
-            print '%s \t%s \t0\t0%%' % (key, count)
-    print 'Sample:\tReads:\tQC-fail:\tQC-fail rate:'
+            print('%s \t%s \t0\t0%%' % (key, count))
+    print('Sample:\tReads:\tQC-fail:\tQC-fail rate:')
     for key , subdict in sorted(read_count.items()):
         count = subdict['count']
         if 'qc_fail' in subdict:
             qc_fail = subdict['qc_fail']
             qc_fail_pct = qc_fail / float(count)
-            print '%s\t%s\t%s\t%.2f%%'%(key,count,qc_fail,100*qc_fail_pct)
+            print('%s\t%s\t%s\t%.2f%%'%(key,count,qc_fail,100*qc_fail_pct))
         else:
-            print '%s \t%s \t0\t0%%' % (key, count)
+            print('%s \t%s \t0\t0%%' % (key, count))
     out_handle.close()
 
     cmd = ['samtools sort %s > %s' % (bam_out, bam_out.replace('.bam','.sorted.bam') )]
@@ -200,8 +204,8 @@ def remove_PCR_duplicates(bam_in, bam_out, ref):
     stdout, stderr = p.communicate()
     stdout = stdout.replace('\r', '\n')
     stderr = stderr.replace('\r', '\n')
-    print stdout
-    print stderr
+    print(stdout)
+    print(stderr)
 
     os.rename(bam_out.replace('.bam','.sorted.bam'), bam_out)
 
@@ -210,8 +214,8 @@ def remove_PCR_duplicates(bam_in, bam_out, ref):
     stdout, stderr = p.communicate()
     stdout = stdout.replace('\r', '\n')
     stderr = stderr.replace('\r', '\n')
-    print stdout
-    print stderr
+    print(stdout)
+    print(stderr)
     return 0
 
 def main():
@@ -225,7 +229,7 @@ def main():
     # 2 Remove PCR duplicates.
     if not args.input and args.input_dir:
         for strand in ['watson', 'crick']:
-            print "started PCR duplicate removal for %s strand" % (strand)
+            print("started PCR duplicate removal for %s strand" % (strand))
             in_bam = os.path.join(args.input_dir,'%s.bam' % strand)
             out_bam = os.path.join(args.input_dir,'%s.dedup.bam' % strand)
             remove_PCR_duplicates(in_bam, out_bam, args.reference)

@@ -6,6 +6,7 @@ __author__ = 'thomasvangurp'
 #External dependencies: samtools,pysam,methylation_calling.py
 #Known bugs: None
 #Modifications: None
+import pysam
 import argparse
 import subprocess
 import tempfile
@@ -42,6 +43,8 @@ def parse_args():
                         help='merged watson and crick fastq')
     parser.add_argument('--reference',
                     help='reference clusters')
+    parser.add_argument('--refgenome',
+                        help='reference genome instead of clusters')
     parser.add_argument('-b','--barcodes',
                     help='Barcodes used in output')
     parser.add_argument('--species',
@@ -72,7 +75,7 @@ def parse_args():
             args.reads_R2 = os.path.join(args.input_dir,'Unassembled.R2.crick.fq.gz')
         if not args.merged:
             args.merged = os.path.join(args.input_dir,'Assembled.fq.gz')
-        if args.reference == None:
+        if args.reference == None and args.refgenome == None:
             args.reference = os.path.join(args.input_dir,'consensus_cluster.renamed.fa')
         if args.barcodes == None:
             args.barcodes = os.path.join(args.input_dir,'barcodes.csv')
@@ -231,11 +234,14 @@ def run_STAR(in_files, args):
            '--reads_R1 %s' % args.reads_R1,
            '--reads_R2 %s' % args.reads_R2,
            '--merged %s' % args.merged,
-           '--reference %s' % args.reference,
            "--barcodes %s" % args.barcodes,
            "--tmpdir %s" % args.tmpdir,
            "--threads %s" % args.threads,
            "--output_dir %s" % args.output_dir]
+    if not args.reference:
+        cmd += ['--refgenome %s' % args.refgenome]
+    else:
+        cmd += ['--reference %s' % args.reference]
     if args.sequences != None:
         cmd += ['--sequences %s' % args.sequences]
     log = "Map reads using STAR"
@@ -408,9 +414,9 @@ def remove_PCR_duplicates(in_files,args):
             if 'dup_count' in subdict:
                 dup_count = subdict['dup_count']
                 dup_pct = dup_count / float(count)
-                print '%s has %s reads and %s duplicates. Duplicate rate: %.2f%%'%(key,count,dup_count,100*dup_pct)
+                print('%s has %s reads and %s duplicates. Duplicate rate: %.2f%%'%(key,count,dup_count,100*dup_pct))
             else:
-                print '%s has %s reads and 0 duplicates. Duplicate rate: 0%%' % (key, count)
+                print('%s has %s reads and 0 duplicates. Duplicate rate: 0%%' % (key, count))
         # out_handle.flush()
         out_handle.close()
         old_bam = in_files['bam_out'][strand]
@@ -449,7 +455,7 @@ def run_Freebayes(in_files,args):
                 #set depth at 100.000.000
                 n+=1
                 if not n%1000:
-                    print 'Done processing %s contigs on %s,skipped %s'%(n,strand,skipped)
+                    print('Done processing %s contigs on %s,skipped %s'%(n,strand,skipped))
                 bamfile = in_files['bam_out'][strand]
                 cmd = ['samtools mpileup -d 10000000 %s -r %s:10-10'%(bamfile,contig)]
                 # if int(contig) > 1000:
@@ -514,7 +520,7 @@ def run_Freebayes(in_files,args):
             target = args.watson_vcf
         else:
             target = args.crick_vcf
-        print outdir,outlist[0],target
+        print(outdir,outlist[0],target)
         shutil.move(os.path.join(outdir,outlist[0]),target)
         for vcf_file in outlist[1:]:
             file_in = os.path.join(outdir,vcf_file)
@@ -617,7 +623,8 @@ def main():
     #Step 2: map reads using STAR
     #TODO: replace for running map_STAR
     files = run_STAR(files,args)
-
+    if args.refgenome:
+        args.reference = args.refgenome
     files = variant_calling_samtools(files, args)
     files = merge_watson_crick(files,args)
     files = SNP_calling(files, args)
