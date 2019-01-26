@@ -3,8 +3,8 @@ numpy
 pysam==0.10.0
 PyVCF==0.6.8
 python_Levenshtein==0.12.0
-matplotlib==2.0.0
-matplotlib_venn==0.11.5
+#matplotlib==2.0.0
+#matplotlib_venn==0.11.5
 nested_dict==1.61
 pyfaidx==0.4.8.1
 scipy==0.18.1
