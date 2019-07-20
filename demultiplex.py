@@ -435,8 +435,8 @@ def parse_seq_pe(opts, bc_dict, Flowcell, Lane):
         right_read = []
         for i in range(4):
             try:
-                left_read += [seq1_handle.readline().decode()]
-                right_read += [seq2_handle.readline().decode()]
+                left_read += [str(seq1_handle.readline().decode())]
+                right_read += [str(seq2_handle.readline().decode())]
             except StopIteration:
                 break
         left_bc, wobble_left, left_start, control_left, mismatch_left = levenshtein(left_read, bc_set_left,

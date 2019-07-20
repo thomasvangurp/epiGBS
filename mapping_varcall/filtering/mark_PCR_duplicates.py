@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 import pysam
 import os
 import sys
@@ -101,13 +101,16 @@ def remove_PCR_duplicates(bam_in, bam_out, ref):
             read_out = {}
             read = None
             qc_fail = set()
-            for read in reads:
+            for n,read in enumerate(reads):
                 tag_dict = dict(read.tags)
                 try:
                     assert 'RN' in tag_dict
                 except AssertionError:
-                    raise AssertionError("RN tag is not available in bam file, abort")
-                    break
+                    if n == 0:
+                        print("RN tag is not available in bam file, no PCR duplicate detection performed")
+                    #just write the output read
+                    out_handle.write(read)
+                    continue
                 try:
                     tag = tag_dict['RN']
                     sample = tag_dict['RG']
@@ -202,8 +205,8 @@ def remove_PCR_duplicates(bam_in, bam_out, ref):
     cmd = ['samtools sort %s > %s' % (bam_out, bam_out.replace('.bam','.sorted.bam') )]
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, executable='/bin/bash')
     stdout, stderr = p.communicate()
-    stdout = stdout.replace('\r', '\n')
-    stderr = stderr.replace('\r', '\n')
+    stdout = stdout.decode().replace('\r', '\n')
+    stderr = stderr.decode().replace('\r', '\n')
     print(stdout)
     print(stderr)
 
@@ -212,8 +215,8 @@ def remove_PCR_duplicates(bam_in, bam_out, ref):
     cmd = ['samtools index %s' % (bam_out)]
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, executable='/bin/bash')
     stdout, stderr = p.communicate()
-    stdout = stdout.replace('\r', '\n')
-    stderr = stderr.replace('\r', '\n')
+    stdout = stdout.decode().replace('\r', '\n')
+    stderr = stderr.decode().replace('\r', '\n')
     print(stdout)
     print(stderr)
     return 0

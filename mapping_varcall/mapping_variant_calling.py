@@ -103,8 +103,8 @@ def run_subprocess(cmd,args,log_message):
         log.flush()
         p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True,executable='/bin/bash')
         stdout, stderr = p.communicate()
-        stdout = stdout.replace('\r','\n')
-        stderr = stderr.replace('\r','\n')
+        stdout = stdout.decode().replace('\r','\n')
+        stderr = stderr.decode().replace('\r','\n')
         if stdout:
             log.write('stdout:\n%s\n'%stdout)
         if stderr:
@@ -607,6 +607,7 @@ def methylation_calling(in_files,args):
            " -o %s"%(os.path.join(args.output_dir,'methylation.bed')),
            " -heat %s"%(os.path.join(args.output_dir,'heatmap.igv'))
            ]
+
 
 
     run_subprocess(cmd,args,log)

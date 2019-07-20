@@ -9,7 +9,6 @@ import tempfile
 import urllib
 import json
 import ssl
-from Bio import SeqIO
 
 __author__ = 'thomasvangurp'
 __description__ = "map reads orders of magnitudes faster using STAR"
@@ -107,8 +106,8 @@ def run_subprocess(cmd,args,log_message):
         log.flush()
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, executable='/bin/bash')
         stdout, stderr = p.communicate()
-        stdout = stdout.replace('\r', '\n')
-        stderr = stderr.replace('\r', '\n')
+        stdout = stdout.decode().replace('\r', '\n')
+        stderr = stderr.decode().replace('\r', '\n')
         if stdout:
             log.write('stdout:\n%s\n' % stdout)
         if stderr:
@@ -130,7 +129,7 @@ def process_reads_merged(args):
     crick_convert = ['G', 'A']
     print('Started processing merged reads')
     if args.merged.endswith('.gz'):
-        file_in_handle = gzip.open(args.merged, 'rb')
+        file_in_handle = gzip.open(args.merged, 'rt')
     else:
         file_in_handle = open(args.merged, 'r')
     watson_out_handle = open(watson_merged.name, 'w')
@@ -140,7 +139,7 @@ def process_reads_merged(args):
         read = []
         for i in range(4):
             try:
-                read.append(file_in_handle.next())
+                read.append(next(file_in_handle))
             except StopIteration:
                 break
         j += 1
@@ -187,11 +186,11 @@ def process_reads_joined(args):
 
     print('Started processing joined reads')
     if args.reads_R1.endswith('.gz'):
-        r1_handle = gzip.open(args.reads_R1, 'rb')
-        r2_handle = gzip.open(args.reads_R2, 'rb')
+        r1_handle = gzip.open(args.reads_R1, 'rt')
+        r2_handle = gzip.open(args.reads_R2, 'rt')
     else:
-        r1_handle = open(args.reads_R1, 'rb')
-        r2_handle = open(args.reads_R2, 'rb')
+        r1_handle = open(args.reads_R1, 'rt')
+        r2_handle = open(args.reads_R2, 'rt')
     #make 4 file handles for forward and reverse watson and crick
     watson_r1_handle = open(args.watson_joined_r1, 'w')
     watson_r2_handle = open(args.watson_joined_r2, 'w')
@@ -203,8 +202,8 @@ def process_reads_joined(args):
         read_r2 = []
         for i in range(4):
             try:
-                read_r1.append(r1_handle.next())
-                read_r2.append(r2_handle.next())
+                read_r1.append(next(r1_handle))
+                read_r2.append(next(r2_handle))
             except StopIteration:
                 break
         j += 1
@@ -359,16 +358,17 @@ def index_STAR(args):
                   (merged_len, merged_count, merged_STAR_crick_index, ref_merged_crick)]
     #calculate parameters for indexing reference for merged and joined reads.
     for (genome_len, no_clusters, genome_dir, ref) in index_list:
-        index_cmd = 'STAR --runThreadN %s --runMode genomeGenerate --genomeDir %s'%(args.threads,genome_dir)
-        fasta_file = [file for file in os.listdir(genome_dir) if file.endswith('.fa')][0]
-        index_cmd += ' --genomeFastaFiles %s'%os.path.join(genome_dir,fasta_file)
-        genomeSAindexNbases = min(14, math.log(genome_len,2)/2 - 1)
-        index_cmd += ' --genomeSAindexNbases %i'%genomeSAindexNbases
-        genomeChrBinNbits = min(18, math.log(genome_len/no_clusters, 2))
-        index_cmd += ' --genomeChrBinNbits %i' % genomeChrBinNbits
-        log = 'making STAR index of %s'%(ref)
-        if 'Genome' not in os.listdir(genome_dir):
-            run_subprocess([index_cmd], args, log)
+        if genome_len != 0:
+            index_cmd = 'STAR --runThreadN %s --runMode genomeGenerate --genomeDir %s'%(args.threads,genome_dir)
+            fasta_file = [file for file in os.listdir(genome_dir) if file.endswith('.fa')][0]
+            index_cmd += ' --genomeFastaFiles %s'%os.path.join(genome_dir,fasta_file)
+            genomeSAindexNbases = min(14, math.log(genome_len,2)/2 - 1)
+            index_cmd += ' --genomeSAindexNbases %i'%genomeSAindexNbases
+            genomeChrBinNbits =     min(18, math.log(genome_len/no_clusters, 2))
+            index_cmd += ' --genomeChrBinNbits %i' % genomeChrBinNbits
+            log = 'making STAR index of %s'%(ref)
+            if 'Genome' not in os.listdir(genome_dir):
+                run_subprocess([index_cmd], args, log)
     return args
 
 def map_STAR(args):
@@ -568,8 +568,8 @@ def bam_output(args):
         #TODO: determine why joined reads have more soft-clips or single read matches
         parse_sam(joined_sam, out_sam.name, 'joined', strand)
         #convert to sorted and indexed bam
-        cmd = 'cat %s %s |samtools view -@ 4 -Shb |sambamba sort -m 4GB -t %s -o %s  /dev/stdin'%(args.header,
-                                                                            out_sam.name,args.threads,
+        cmd = 'cat %s %s |samtools view -@ 4 -Shb |sambamba sort -m 4GB --tmpdir %s -t %s -o %s  /dev/stdin'%(args.header,
+                                                                            out_sam.name,args.tmpdir, args.threads,
                                                             os.path.join(args.output_dir,'%s.bam' % strand) )
         log = "make sorted bam file"
         run_subprocess([cmd], args, log)
