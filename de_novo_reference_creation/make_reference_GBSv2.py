@@ -131,14 +131,14 @@ def merge_reads(args):
     out_files = {'merged':'%smerged'%args.outputdir + ".assembled.fastq",
                          'single_R1':'%smerged'%args.outputdir + ".unassembled.forward.fastq",
                          'single_R2':'%smerged'%args.outputdir + ".unassembled.reverse.fastq"}
-    for v in out_files.values():
+    for v in list(out_files.values()):
         assert os.path.exists(v)
     return out_files
 
 def remove_methylation(in_files,args):
     """Remove methylation in watson and crick using sed"""
     for strand in ['watson','crick']:
-        for key,value in in_files[strand].items():
+        for key,value in list(in_files[strand].items()):
             name_out = key + "_demethylated"
             file_out = value.split('.')[0]+ "_demethylated." + '.'.join(value.split('.')[1:])
             file_out += '.gz'
@@ -347,8 +347,8 @@ def get_ref(clusters):
     output_fasta = '>%s\n'%id
     for i in sorted(output_count.keys()):
         try:
-            watson_nt = max(output_count[i]['w'].iteritems(), key=operator.itemgetter(1))[0]
-            crick_nt = max(output_count[i]['c'].iteritems(), key=operator.itemgetter(1))[0]
+            watson_nt = max(iter(output_count[i]['w'].items()), key=operator.itemgetter(1))[0]
+            crick_nt = max(iter(output_count[i]['c'].items()), key=operator.itemgetter(1))[0]
         except KeyError:
             return None
         if watson_nt == crick_nt:
@@ -458,8 +458,8 @@ def check_dependencies():
 def clear_tmp(file_dict):
     """clear tmp files"""
     purge_list = []
-    for v in file_dict.keys():
-        for key,value in file_dict[v].items():
+    for v in list(file_dict.keys()):
+        for key,value in list(file_dict[v].items()):
             try:
                 if value.startswith('/tmp'):
                     purge_list.append(value)
@@ -467,7 +467,7 @@ def clear_tmp(file_dict):
                 if type(value) == type([]):
                     purge_list.append(value[0])
     for item in purge_list:
-        print "removing %s" % item
+        print("removing %s" % item)
         os.remove(item)
     return 0
 
